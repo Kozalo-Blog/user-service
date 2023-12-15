@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE Users SET location = ARRAY[$2::float8, $3::float8] WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Float8",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9746f8e72691dde0dc72939ca8fdde956ea86a7541f00570fc64136f5d3d65d4"
+}
