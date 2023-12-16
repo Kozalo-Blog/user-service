@@ -19,6 +19,9 @@ jobs:
         uses: hecrj/setup-rust-action@v1
       - run: echo "🖥️ The workflow is now ready to test your code on the runner."
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+
       - name: Build
         run: cargo build --verbose
 

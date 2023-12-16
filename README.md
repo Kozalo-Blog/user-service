@@ -10,7 +10,7 @@ repositories).
 Features
 --------
 * REST endpoints (using [axum](https://github.com/tokio-rs/axum));
-* ~~gRPC services (using [tonic](https://github.com/hyperium/tonic))~~ _(not available yet but this work is in progress)_;
+* gRPC services (using [tonic](https://github.com/hyperium/tonic));
 * Prometheus-like metrics;
 * [sqlx](https://github.com/launchbadge/sqlx) connection pool for PostgreSQL and macros to check queries statically at compile time. 
 

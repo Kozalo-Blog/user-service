@@ -3,20 +3,11 @@ use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
 use crate::dto::error::{CodeStringLengthError, VecLengthAssertionError};
 
-/// DTO for JSON request
+/// DTO for JSON request and `repo::Users::register()`
 #[derive(Serialize, Deserialize)]
 pub struct ExternalUser {
     pub external_id: i64,
     pub name: Option<String>,
-}
-
-/// DTO for JSON response
-#[derive(Serialize, Deserialize)]
-pub struct UserView {
-    id: i64,
-    name: Option<String>,
-    options: Options,
-    is_premium: bool
 }
 
 /// Public DTO for the users fetched from the database.
@@ -29,16 +20,10 @@ pub struct SavedUser {
     pub premium_till: Option<DateTime<Utc>>
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Options {
-    language_code: Option<String>,
-    location: Option<Location>,
-}
-
 #[derive(Debug, PartialEq, Serialize, Deserialize, From)]
 pub struct Location {
-    latitude: f64,
-    longitude: f64,
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -47,21 +32,6 @@ pub struct Code([char; 2]);
 
 // IMPLEMENTATIONS
 
-
-impl From<SavedUser> for UserView {
-    fn from(value: SavedUser) -> Self {
-        let is_premium = value.premium();
-        Self {
-            id: value.id,
-            name: value.name,
-            options: Options {
-                language_code: value.language_code.map(Into::into),
-                location: value.location.map(Into::into),
-            },
-            is_premium,
-        }
-    }
-}
 
 impl SavedUser {
     pub fn premium(&self) -> bool {

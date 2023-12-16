@@ -1,3 +1,4 @@
+use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(sqlx::Type, Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Copy, Clone)]
@@ -11,7 +12,7 @@ pub enum ServiceType {
     Application,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, From)]
 pub struct Service {
     pub name: String,
 

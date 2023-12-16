@@ -1,7 +1,7 @@
 FROM rust:alpine as builder
 WORKDIR /build
 
-RUN apk update && apk add --no-cache pkgconfig musl-dev libressl-dev
+RUN apk update && apk add --no-cache pkgconfig musl-dev libressl-dev protobuf-dev
 
 # Create an unprivileged user
 ENV USER=appuser
@@ -17,8 +17,9 @@ RUN adduser \
 
 COPY src/ src/
 COPY migrations/ migrations/
+COPY proto/ proto/
 COPY .sqlx/ .sqlx/
-COPY Cargo.* ./
+COPY Cargo.* build.rs ./
 
 ENV RUSTFLAGS='-C target-feature=-crt-static'
 RUN cargo build --release && mv target/release/user-service /user-service
@@ -33,6 +34,7 @@ COPY --from=builder /etc/group /etc/group
 USER appuser:appuser
 
 EXPOSE 8080
+EXPOSE 8090
 ARG RUST_LOG
 ARG DATABASE_URL
 ARG DATABASE_MAX_CONNECTIONS

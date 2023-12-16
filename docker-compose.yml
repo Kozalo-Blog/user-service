@@ -11,6 +11,7 @@ services:
       - DATABASE_MAX_CONNECTIONS
     expose:
       - 8080
+      - 8090
     networks:
       - postgres-network
     labels:

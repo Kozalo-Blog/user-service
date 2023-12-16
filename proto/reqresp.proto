@@ -1,0 +1,35 @@
+syntax = "proto3";
+package grpc;
+
+import "google/protobuf/timestamp.proto";
+import "dto.proto";
+
+message GetUserRequest {
+  int64 id = 1;
+  bool by_external_id = 2;
+}
+
+message UpdateUserRequest {
+  int64 id = 1;
+  oneof target {
+    string language = 2;
+    Location location = 3;
+    google.protobuf.Timestamp premium_active_till = 4;
+  }
+}
+
+message RegistrationRequest {
+  ExternalUser user = 1;
+  Service service = 2;
+}
+
+message RegistrationResponse {
+  RegistrationStatus status = 1;
+  int64 id = 2;
+}
+
+enum RegistrationStatus {
+  REGISTRATION_STATUS_UNSPECIFIED = 0;
+  REGISTRATION_STATUS_CREATED = 1;
+  REGISTRATION_STATUS_ALREADY_PRESENT = 2;
+}
