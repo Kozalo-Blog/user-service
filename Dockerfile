@@ -1,7 +1,7 @@
 FROM rust:alpine as builder
 WORKDIR /build
 
-RUN apk update && apk add --no-cache pkgconfig musl-dev libressl-dev protobuf-dev
+RUN apk update && apk add --no-cache musl-dev protobuf-dev
 
 # Create an unprivileged user
 ENV USER=appuser
@@ -25,7 +25,7 @@ ENV RUSTFLAGS='-C target-feature=-crt-static'
 RUN cargo build --release && mv target/release/user-service /user-service
 
 FROM alpine
-RUN apk update && apk add --no-cache libgcc libressl
+RUN apk update && apk add --no-cache libgcc
 COPY --from=builder /user-service /usr/local/bin/
 # Import the user and group files from the builder
 COPY --from=builder /etc/passwd /etc/passwd
