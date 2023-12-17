@@ -7,6 +7,9 @@ use crate::repo;
 
 mod services;
 mod users;
+mod export;
+
+pub use export::*;
 
 const POSTGRES_USER: &str = "test";
 const POSTGRES_PASSWORD: &str = "test_pw";

@@ -1,6 +1,7 @@
 use testcontainers::clients;
 use crate::dto::{Service, ServiceType};
 use crate::repo;
+use crate::repo::services::Services;
 use crate::repo::test::start_postgres;
 
 const TEST_NAME: &str = "SadBot";
@@ -9,7 +10,7 @@ const TEST_NAME: &str = "SadBot";
 async fn test_services() -> anyhow::Result<()> {
     let docker = clients::Cli::default();
     let (_container, db) = start_postgres(&docker).await;
-    let services = repo::Services::new(db);
+    let services = repo::ServicesPostgres::new(db);
 
     let service = Service {
         name: TEST_NAME.to_owned(),

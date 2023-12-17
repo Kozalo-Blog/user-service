@@ -4,7 +4,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::dto::error::{CodeStringLengthError, VecLengthAssertionError};
 
 /// DTO for JSON request and `repo::Users::register()`
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExternalUser {
     pub external_id: i64,
     pub name: Option<String>,
@@ -12,6 +12,7 @@ pub struct ExternalUser {
 
 /// Public DTO for the users fetched from the database.
 /// See `crate::repo::users::UserInternal` to see the other, internal, side.
+#[derive(Clone)]
 pub struct SavedUser {
     pub id: i64,
     pub name: Option<String>,
@@ -20,7 +21,7 @@ pub struct SavedUser {
     pub premium_till: Option<DateTime<Utc>>
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, From)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, From)]
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
@@ -28,6 +29,13 @@ pub struct Location {
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct Code([char; 2]);
+
+#[cfg(test)]
+impl std::fmt::Display for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}{}", self.0[0], self.0[1]))
+    }
+}
 
 
 // IMPLEMENTATIONS

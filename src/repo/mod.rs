@@ -3,13 +3,13 @@ pub mod services;
 pub mod error;
 
 #[cfg(test)]
-mod test;
+pub mod test;
 
 use std::str::FromStr;
 use anyhow::anyhow;
 use url::Url;
-use crate::repo::services::Services;
-use crate::repo::users::Users;
+use crate::repo::services::{Services, ServicesPostgres};
+use crate::repo::users::{Users, UsersPostgres};
 
 #[derive(Clone)]
 pub struct DatabaseConfig {
@@ -27,15 +27,15 @@ impl DatabaseConfig {
 }
 
 pub struct Repositories {
-    pub users: Users,
-    pub services: Services,
+    pub users: Box<dyn Users + Sync + Send + 'static>,
+    pub services: Box<dyn Services + Sync + Send + 'static>,
 }
 
 impl Repositories {
     pub fn new(db: sqlx::Pool<sqlx::Postgres>) -> Self {
         Self {
-            users: Users::new(db.clone()),
-            services: Services::new(db.clone()),
+            users: Box::new(UsersPostgres::new(db.clone())),
+            services: Box::new(ServicesPostgres::new(db.clone())),
         }
     }
 }
@@ -46,24 +46,6 @@ pub async fn establish_database_connection(config: &DatabaseConfig) -> Result<sq
         .connect(config.url.as_str()).await?;
     sqlx::migrate!().run(&pool).await?;
     Ok(pool)
-}
-
-#[macro_export]
-macro_rules! repository {
-    ($name:ident, $($methods:item),*) => {
-        #[derive(Clone)]
-        pub struct $name {
-            pool: sqlx::Pool<sqlx::Postgres>
-        }
-
-        impl $name {
-            pub fn new(pool: sqlx::Pool<sqlx::Postgres>) -> Self {
-                Self { pool }
-            }
-
-            $($methods)*
-        }
-    };
 }
 
 fn get_mandatory_value<T, E>(key: &str) -> anyhow::Result<T>
