@@ -3,6 +3,7 @@ use std::error::Error;
 use std::sync::Arc;
 use axum::body::{Body, HttpBody};
 use axum::response::Response;
+use chrono::{Months, Timelike, Utc};
 use http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::json;
@@ -176,10 +177,21 @@ async fn test_updates() -> anyhow::Result<()> {
     let response = client.activate_user_premium(1, "week").await?;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let response = client.activate_user_premium(1, "month").await?;
-    ensure_success(response).await?;
-    // TODO: implement
-    // let response = client.activate_user_premium(1, "month").await?;
-    // assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_json_value(response).await?;
+    let date_part_str_range = 0..10;
+    let date_in_month = &Utc::now()
+        .checked_add_months(Months::new(1))
+        .unwrap()
+        .with_nanosecond(0)
+        .unwrap()
+        .to_string()
+        [date_part_str_range.clone()];
+    assert_eq!(body["success"], true);
+    let active_till = body["active_till"].as_str()
+        .map(|s| &s[date_part_str_range])
+        .expect("active_till must be present here");
+    assert_eq!(active_till, date_in_month);
 
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::OK);

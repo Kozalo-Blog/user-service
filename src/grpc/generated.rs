@@ -1,10 +1,8 @@
 use derive_more::{Display, From};
-use prost::DecodeError;
 use thiserror::Error;
 use crate::dto;
-use crate::dto::error::CodeStringLengthError;
-use crate::dto::PremiumVariants as PremiumVariantsTrait;
-use crate::grpc::generated::update_user_request::{PremiumVariants, Target};
+use crate::dto::error::{CodeStringLengthError, EnumUnspecifiedValue};
+use crate::grpc::generated::update_user_request::Target;
 use crate::grpc::generated::user::Options;
 use crate::repo::users::UpdateTarget;
 
@@ -63,7 +61,6 @@ impl TryInto<dto::ServiceType> for ServiceType {
 #[derive(Debug, Error, Display, From)]
 pub enum TargetConversionError {
     LanguageCodeConversionError(CodeStringLengthError),
-    PremiumActiveTillConversionError(DecodeError),
 }
 
 impl TryInto<UpdateTarget> for Target {
@@ -73,7 +70,6 @@ impl TryInto<UpdateTarget> for Target {
         let target: UpdateTarget = match self {
             Target::Language(code) => dto::Code::try_from(code)?.into(),
             Target::Location(loc) => (loc.latitude, loc.longitude).into(),
-            Target::PremiumVariant(variant) => PremiumVariants::try_from(variant)?.to_datetime().into()
         };
         Ok(target)
     }
@@ -98,17 +94,16 @@ impl From<dto::RegistrationStatus> for RegistrationStatus {
     }
 }
 
-impl dto::PremiumVariants for PremiumVariants {
-    fn get_months(&self) -> u32 {
+impl TryInto<dto::PremiumVariant> for PremiumVariant {
+    type Error = EnumUnspecifiedValue;
+
+    fn try_into(self) -> Result<dto::PremiumVariant, Self::Error> {
         match self {
-            PremiumVariants::Unspecified => {
-                log::warn!("[gRPC] unspecified premium variant!");
-                0
-            },
-            PremiumVariants::Month => 1,
-            PremiumVariants::Quarter => 3,
-            PremiumVariants::HalfYear => 6,
-            PremiumVariants::Year => 12,
+            Self::Unspecified => Err(EnumUnspecifiedValue),
+            Self::Month => Ok(dto::PremiumVariant::Month),
+            Self::Quarter => Ok(dto::PremiumVariant::Quarter),
+            Self::HalfYear => Ok(dto::PremiumVariant::HalfYear),
+            Self::Year => Ok(dto::PremiumVariant::Year),
         }
     }
 }

@@ -28,10 +28,10 @@ prometheus = "0.13.3"
 derive_more = { version = "1.0.0-beta.6", features = ["display", "constructor", "from", "error", "from_str"] }
 thiserror = "1.0.51"
 autometrics = { version = "1.0.0", features = ["prometheus-exporter"] }
+num-traits = "0.2.17"
 
 [dev-dependencies]
 testcontainers = "0.15.0"
-num-traits = "0.2.17"
 http = "1.0.0"
 http-body-util = "0.1.0"
 mime = "0.3.17"

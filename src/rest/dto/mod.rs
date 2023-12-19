@@ -3,10 +3,11 @@ mod user;
 pub use user::*;
 
 use axum::response::{IntoResponse, Response};
+use chrono::{DateTime, Utc};
 use derive_more::FromStr;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
-use crate::dto::{ExternalUser, PremiumVariants, Service};
+use crate::dto::{ExternalUser, PremiumVariant, Service};
 
 #[derive(Deserialize)]
 pub struct RegistrationRequest {
@@ -15,20 +16,35 @@ pub struct RegistrationRequest {
 }
 
 #[derive(Clone, FromStr)]
-pub enum PremiumVariantsRest {
+pub enum PremiumVariantRest {
     Month,
     Quarter,
     HalfYear,
     Year,
 }
 
-impl PremiumVariants for PremiumVariantsRest {
-    fn get_months(&self) -> u32 {
+impl Into<PremiumVariant> for PremiumVariantRest {
+    fn into(self) -> PremiumVariant {
         match self {
-            Self::Month => 1,
-            Self::Quarter => 3,
-            Self::HalfYear => 6,
-            Self::Year => 12,
+            Self::Month => PremiumVariant::Month,
+            Self::Quarter => PremiumVariant::Quarter,
+            Self::HalfYear => PremiumVariant::HalfYear,
+            Self::Year => PremiumVariant::Year,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct PremiumActivationResult {
+    success: bool,
+    active_till: Option<DateTime<Utc>>,
+}
+
+impl From<Option<DateTime<Utc>>> for PremiumActivationResult {
+    fn from(value: Option<DateTime<Utc>>) -> Self {
+        Self {
+            success: value.is_some(),
+            active_till: value,
         }
     }
 }

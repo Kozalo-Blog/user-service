@@ -16,6 +16,9 @@ pub struct CodeStringLengthError;
 #[derive(Debug, Display, Error)]
 pub struct TypeConversionError(Box<dyn std::error::Error + Send + Sync + 'static>);
 
+#[derive(Debug, Display, Error)]
+pub struct EnumUnspecifiedValue;
+
 
 // IMPLEMENTATIONS
 

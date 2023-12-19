@@ -1,8 +1,8 @@
-use chrono::{Timelike, Utc};
+use chrono::{Months, Timelike, Utc};
 use sqlx::{Pool, Postgres};
 use testcontainers::clients;
 use tokio::join;
-use crate::dto::{Code, ExternalUser, ServiceType};
+use crate::dto::{Code, ExternalUser, PremiumVariant, ServiceType};
 use crate::repo;
 use crate::repo::services::Services;
 use crate::repo::test::start_postgres;
@@ -21,7 +21,6 @@ async fn test_users() -> anyhow::Result<()> {
     let users = repo::UsersPostgres::new(db.clone());
     let external_id = UserId::External(TEST_UID_EXT);
     let code = "ru".try_into()?;
-    let now = Utc::now();
 
     assert!(users.get(external_id).await?.is_none());
 
@@ -30,8 +29,8 @@ async fn test_users() -> anyhow::Result<()> {
 
     test_get_user_id(&users, service_id, created_user_id).await;
     test_get_created_user(&users, external_id, created_user_id).await;
-    test_update_user(&users, created_user_id, code, now).await?;
-    test_fetch_updated_user(&users, created_user_id, code, now).await;
+    test_update_user(&users, created_user_id, code).await?;
+    test_fetch_updated_user(&users, created_user_id, code).await;
 
     Ok(())
 }
@@ -72,17 +71,18 @@ async fn test_get_created_user(users: &repo::UsersPostgres, external_id: UserId,
     assert!(fetched_user.premium_till.is_none());
 }
 
-async fn test_update_user(users: &repo::UsersPostgres, created_user_id: i64, code: Code, now: chrono::DateTime<Utc>) -> anyhow::Result<()> {
+async fn test_update_user(users: &repo::UsersPostgres, created_user_id: i64, code: Code) -> anyhow::Result<()> {
     let (r1, r2, r3) = join!(
         users.update_value(created_user_id, UpdateTarget::Language(code)),
         users.update_value(created_user_id, TEST_LOCATION.into()),
-        users.update_value(created_user_id, UpdateTarget::Premium { till: now })
+        users.activate_premium(created_user_id, PremiumVariant::Month)
     );
-    (r1?, r2?, r3?);
+    (r1?, r2?);
+    assert!(r3?.is_some());
     Ok(())
 }
 
-async fn test_fetch_updated_user(users: &repo::UsersPostgres, created_user_id: i64, code: Code, premium_till: chrono::DateTime<Utc>) {
+async fn test_fetch_updated_user(users: &repo::UsersPostgres, created_user_id: i64, code: Code) {
     let fetched_user = users.get(UserId::Internal(created_user_id))
         .await
         .expect("couldn't fetch the updated user")
@@ -90,8 +90,11 @@ async fn test_fetch_updated_user(users: &repo::UsersPostgres, created_user_id: i
     assert_eq!(fetched_user.language_code, Some(code));
     assert_eq!(fetched_user.location, Some(TEST_LOCATION.into()));
 
-    let original_prem = premium_till.with_nanosecond(0);
-    let fetched_prem = fetched_user.premium_till
+    let now = Utc::now()
+        .checked_add_months(Months::new(1))
+        .unwrap()
+        .with_nanosecond(0);
+    let fetched_date = fetched_user.premium_till
         .and_then(|till| till.with_nanosecond(0));
-    assert_eq!(fetched_prem, original_prem);
+    assert_eq!(fetched_date, now);
 }

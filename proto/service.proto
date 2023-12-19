@@ -9,4 +9,5 @@ service UserService {
   rpc get(GetUserRequest) returns (User);
   rpc register(RegistrationRequest) returns (RegistrationResponse);
   rpc update(UpdateUserRequest) returns (google.protobuf.Empty);
+  rpc activatePremium(ActivatePremiumRequest) returns (ActivatePremiumResponse);
 }

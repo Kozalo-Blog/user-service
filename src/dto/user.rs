@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use std::ops::Add;
+use chrono::{DateTime, Months, Utc};
 use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
 use crate::dto::error::{CodeStringLengthError, VecLengthAssertionError};
@@ -93,5 +94,31 @@ impl TryFrom<&str> for Code {
 impl Into<String> for Code {
     fn into(self) -> String {
         format!("{}{}", self.0[0], self.0[1])
+    }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum PremiumVariant {
+    Month = 1,
+    Quarter = 3,
+    HalfYear = 6,
+    Year = 12,
+}
+
+impl Into<DateTime<Utc>> for PremiumVariant {
+    fn into(self) -> DateTime<Utc> {
+        self + Utc::now()
+    }
+}
+
+impl Add<DateTime<Utc>> for PremiumVariant {
+    type Output = DateTime<Utc>;
+
+    fn add(self, initial_date: DateTime<Utc>) -> Self::Output {
+        let months = Months::new(self as u32);
+        initial_date
+            .checked_add_months(months)
+            .expect("something very bad was happened: the date, till the premium subscription will be active, is out of range O_o")
     }
 }

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use axum::async_trait;
+use chrono::{DateTime, Utc};
 use num_traits::PrimInt;
-use sqlx::Error;
 use tokio::sync::Mutex;
-use crate::dto::{ExternalUser, SavedUser, Service, ServiceType};
+use crate::dto::{ExternalUser, PremiumVariant, SavedUser, Service, ServiceType};
 use crate::dto::error::TypeConversionError;
 use crate::repo::error::RepoError;
 use crate::repo::Repositories;
@@ -54,7 +54,7 @@ create_mock_struct!(UsersMock, i64, ExternalId, SavedUser, users);
 
 #[async_trait]
 impl Services for ServicesMock {
-    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, Error> {
+    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
         log::info!("ServiceMock:create: {name} ({service_type:?})");
         let id = self.gen_id().await;
         let service = (name.to_string(), service_type).into();
@@ -63,7 +63,7 @@ impl Services for ServicesMock {
         Ok(id)
     }
 
-    async fn get_id(&self, service: &Service) -> Result<Option<i32>, Error> {
+    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
         // since this is just a mock, use the simplest O(n) search
         self.services.lock().await
             .iter()
@@ -95,7 +95,7 @@ impl Users for UsersMock {
         }
     }
 
-    async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, Error> {
+    async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, sqlx::Error> {
         log::info!("UsersMock:register: {user:?} (service_id = {service_id})");
         let id = self.gen_id().await;
         let saved_user = SavedUser {
@@ -112,7 +112,7 @@ impl Users for UsersMock {
             .unwrap_or(Ok(id))
     }
 
-    async fn get_user_id(&self, _: i32, external_id: i64) -> Result<Option<i64>, Error> {
+    async fn get_user_id(&self, _: i32, external_id: i64) -> Result<Option<i64>, sqlx::Error> {
         let user_id = external_id as ExternalId;
         self.users.lock().await
             .get(&user_id)
@@ -120,24 +120,56 @@ impl Users for UsersMock {
             .transpose()
     }
 
-    async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), Error> {
+    async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error> {
         log::info!("UsersMock:update_value for {user_id} - {target:?}");
+        self.modify_user(user_id, |user| {
+            match target {
+                UpdateTarget::Language(code) => { user.language_code.replace(code); },
+                UpdateTarget::Location { latitude, longitude } => { user.location.replace((latitude, longitude).into()); },
+            }
+        }).await
+    }
+
+    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+        log::info!("UsersMock:activate_premium for {user_id} for {}", variant as u32);
+        let premium_active = self.find_user(user_id).await?
+            .premium_till.is_some();
+        if premium_active {
+            return Ok(None)
+        }
+
+        self.modify_user(user_id, |user| {
+            user.premium_till.replace(variant.into());
+        }).await?;
+        Ok(Some(variant.into()))
+    }
+}
+
+impl UsersMock {
+    async fn find_user(&self, id: i64) -> Result<SavedUser, sqlx::Error> {
+        let external_id = self.find_external_id(id).await?;
+        let user = self.users.lock().await
+            .get(&external_id)
+            .expect("user must be in the HashMap here!")
+            .clone();
+        Ok(user)
+    }
+
+    async fn modify_user(&self, id: i64, mut action: impl FnMut(&mut SavedUser)) -> Result<(), sqlx::Error> {
+        let external_id = self.find_external_id(id).await?;
         let mut users = self.users.lock().await;
-        let external_id = users.iter()
-            .filter(|(_, u)| u.id == user_id)
+        let user= users.get_mut(&external_id)
+            .expect("user must be in the HashMap here!");
+        Ok(action(user))
+    }
+
+    async fn find_external_id(&self, id: i64) -> Result<ExternalId, sqlx::Error> {
+        self.users.lock().await.iter()
+            .filter(|(_, u)| u.id == id)
             .map(|(ext_id, _)| *ext_id)
             .take(1)
             .next()
-            // TODO: report if the value was not updated in the result
-            .expect("the user was not found");
-        let user = users.get_mut(&external_id)
-            .expect("user must be in the HashMap here!");
-        match target {
-            UpdateTarget::Language(code) => { user.language_code.replace(code); },
-            UpdateTarget::Location { latitude, longitude } => { user.location.replace((latitude, longitude).into()); },
-            UpdateTarget::Premium { till } => { user.premium_till.replace(till); }
-        }
-        Ok(())
+            .ok_or(sqlx::Error::RowNotFound)
     }
 }
 

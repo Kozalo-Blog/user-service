@@ -1,7 +1,9 @@
 use axum::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use derive_more::{Constructor, From};
-use crate::dto::{SavedUser, Code, ExternalUser, error::TypeConversionError, Location};
+use num_traits::Zero;
+use sqlx::postgres::PgQueryResult;
+use crate::dto::{SavedUser, Code, ExternalUser, error::TypeConversionError, Location, PremiumVariant};
 use crate::repo::error::RepoError;
 
 #[derive(sqlx::FromRow)]
@@ -10,7 +12,7 @@ struct UserInternal {
     name: Option<String>,
     language_code: Option<String>,
     location: Option<Vec<f64>>,
-    premium_till: Option<chrono::DateTime<Utc>>
+    premium_till: Option<DateTime<Utc>>
 }
 
 impl TryFrom<UserInternal> for SavedUser {
@@ -47,7 +49,6 @@ pub enum UserId {
 pub enum UpdateTarget {
     Language(Code),
     Location { latitude: f64, longitude: f64 },
-    Premium { till: chrono::DateTime<Utc> },
 }
 
 impl From<Location> for UpdateTarget {
@@ -63,6 +64,7 @@ pub trait Users {
     async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, sqlx::Error>;
     async fn get_user_id(&self, service_id: i32, external_id: i64) -> Result<Option<i64>, sqlx::Error>;
     async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error>;
+    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error>;
 }
 
 #[derive(Clone, Constructor)]
@@ -74,10 +76,7 @@ pub struct UsersPostgres {
 impl Users for UsersPostgres {
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>> {
         let result = match id {
-            UserId::Internal(id) => sqlx::query_as!(UserInternal,
-                    "SELECT id, name, language_code, location, premium_till FROM Users WHERE id = $1", id)
-                .fetch_optional(&self.pool)
-                .await,
+            UserId::Internal(id) => Self::get_user_internal(&self.pool, id).await,
             UserId::External(external_id) => sqlx::query_as!(UserInternal,
                     "SELECT id, name, language_code, location, premium_till FROM Users u
                     JOIN User_Service_Mappings usm ON u.id = usm.user_id
@@ -115,38 +114,56 @@ impl Users for UsersPostgres {
     }
 
     async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error> {
-        match target {
+        let rows_affected = match target {
             UpdateTarget::Language(code) => self.update_language(user_id, code).await,
             UpdateTarget::Location { latitude, longitude } => self.update_location(user_id, latitude, longitude).await,
-            UpdateTarget::Premium { till } => self.update_premium(user_id, till).await,
+        }?.rows_affected();
+
+        if rows_affected.is_zero() {
+            Err(sqlx::Error::RowNotFound)
+        } else {
+            Ok(())
         }
+    }
+
+    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let start_datetime = Self::get_user_internal(&mut *tx, user_id).await?
+            .and_then(|UserInternal { premium_till, .. }| premium_till)
+            .unwrap_or(Utc::now());
+
+        let till = variant + start_datetime;
+        let rows_affected = sqlx::query!("UPDATE Users SET premium_till = $2 WHERE id = $1", user_id, Some(&till))
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        tx.commit().await?;
+
+        let res = if rows_affected.is_zero() { None } else { Some(till) };
+        Ok(res)
     }
 }
 
 impl UsersPostgres {
-    async fn update_language(&self, user_id: i64, language: Code) -> Result<(), sqlx::Error> {
+    async fn update_language(&self, user_id: i64, language: Code) -> Result<PgQueryResult, sqlx::Error> {
         let lang_code: String = language.into();
         sqlx::query!("UPDATE Users SET language_code = $2 WHERE id = $1", user_id, lang_code)
             .execute(&self.pool)
             .await
-            .map(|_| ())
     }
 
-    async fn update_location(&self, user_id: i64, latitude: f64, longitude: f64) -> Result<(), sqlx::Error> {
+    async fn update_location(&self, user_id: i64, latitude: f64, longitude: f64) -> Result<PgQueryResult, sqlx::Error> {
         sqlx::query!("UPDATE Users SET location = ARRAY[$2::float8, $3::float8] WHERE id = $1", user_id, latitude, longitude)
             .execute(&self.pool)
             .await
-            .map(|_| ())
     }
 
-    async fn update_premium<T>(&self, user_id: i64, till: chrono::DateTime<T>) -> Result<(), sqlx::Error>
-        where
-            T: TimeZone + Send + Sync,
-            <T as TimeZone>::Offset: Send + Sync
+    async fn get_user_internal<'a, E>(executor: E, id: i64) -> Result<Option<UserInternal>, sqlx::Error>
+    where E: sqlx::Executor<'a, Database = sqlx::Postgres>
     {
-        sqlx::query!("UPDATE Users SET premium_till = $2 WHERE id = $1", user_id, till)
-            .execute(&self.pool)
+        sqlx::query_as!(UserInternal,
+                    "SELECT id, name, language_code, location, premium_till FROM Users WHERE id = $1", id)
+            .fetch_optional(executor)
             .await
-            .map(|_| ())
     }
 }

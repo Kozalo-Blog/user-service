@@ -5,11 +5,11 @@ use axum::extract::{Path, Query};
 use axum::routing::{get, post, put};
 use axum_route_error::RouteError;
 use axum::http::StatusCode;
-use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus, PremiumVariants};
+use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus};
 use crate::dto::error::CodeStringLengthError;
 use crate::repo;
 use crate::repo::users::{UpdateTarget, UserId};
-use crate::rest::{PremiumVariantsRest, RegistrationRequest, RestError, Success, UserView};
+use crate::rest::{PremiumActivationResult, PremiumVariantRest, RegistrationRequest, RestError, Success, UserView};
 
 pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
     axum::Router::new()
@@ -88,18 +88,19 @@ async fn update_location(
     update_impl(repos, id, location.into()).await
 }
 
-async fn activate_premium(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
-    Path((id, till)): Path<(i64, String)>,
-) -> Result<Success, RouteError<RestError>> {
-    let till_datetime = PremiumVariantsRest::from_str(&till)
-        .map_err(|e| RouteError::new_bad_request().set_error_data(e.into()))?
-        .to_datetime();
-    update_impl(repos, id, till_datetime.into()).await
-}
-
 async fn update_impl(repos: Arc<repo::Repositories>, id: i64, target: UpdateTarget) -> Result<Success, RouteError<RestError>> {
     repos.users.update_value(id, target).await
         .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
     Ok(Success)
+}
+
+async fn activate_premium(
+    Extension(repos): Extension<Arc<repo::Repositories>>,
+    Path((id, till)): Path<(i64, String)>,
+) -> Result<Json<PremiumActivationResult>, RouteError<RestError>> {
+    let variant = PremiumVariantRest::from_str(&till)
+        .map_err(|e| RouteError::new_bad_request().set_error_data(e.into()))?;
+    let activation_result = repos.users.activate_premium(id, variant.into()).await
+        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+    Ok(Json(PremiumActivationResult::from(activation_result)))
 }
