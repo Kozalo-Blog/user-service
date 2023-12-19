@@ -1,10 +1,10 @@
-use std::time::SystemTime;
 use derive_more::{Display, From};
-use prost_types::TimestampError;
+use prost::DecodeError;
 use thiserror::Error;
 use crate::dto;
 use crate::dto::error::CodeStringLengthError;
-use crate::grpc::generated::update_user_request::Target;
+use crate::dto::PremiumVariants as PremiumVariantsTrait;
+use crate::grpc::generated::update_user_request::{PremiumVariants, Target};
 use crate::grpc::generated::user::Options;
 use crate::repo::users::UpdateTarget;
 
@@ -63,7 +63,7 @@ impl TryInto<dto::ServiceType> for ServiceType {
 #[derive(Debug, Error, Display, From)]
 pub enum TargetConversionError {
     LanguageCodeConversionError(CodeStringLengthError),
-    PremiumActiveTillConversionError(TimestampError),
+    PremiumActiveTillConversionError(DecodeError),
 }
 
 impl TryInto<UpdateTarget> for Target {
@@ -73,11 +73,7 @@ impl TryInto<UpdateTarget> for Target {
         let target: UpdateTarget = match self {
             Target::Language(code) => dto::Code::try_from(code)?.into(),
             Target::Location(loc) => (loc.latitude, loc.longitude).into(),
-            Target::PremiumActiveTill(till) => {
-                let system_time: SystemTime = till.try_into()?;
-                let datetime: chrono::DateTime<chrono::Utc> = system_time.into();
-                datetime.into()
-            }
+            Target::PremiumVariant(variant) => PremiumVariants::try_from(variant)?.to_datetime().into()
         };
         Ok(target)
     }
@@ -98,6 +94,21 @@ impl From<dto::RegistrationStatus> for RegistrationStatus {
         match value {
             dto::RegistrationStatus::Created => Self::Created,
             dto::RegistrationStatus::AlreadyPresent => Self::AlreadyPresent,
+        }
+    }
+}
+
+impl dto::PremiumVariants for PremiumVariants {
+    fn get_months(&self) -> u32 {
+        match self {
+            PremiumVariants::Unspecified => {
+                log::warn!("[gRPC] unspecified premium variant!");
+                0
+            },
+            PremiumVariants::Month => 1,
+            PremiumVariants::Quarter => 3,
+            PremiumVariants::HalfYear => 6,
+            PremiumVariants::Year => 12,
         }
     }
 }

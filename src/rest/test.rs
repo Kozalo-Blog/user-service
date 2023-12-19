@@ -79,6 +79,29 @@ impl UserServiceClient {
         ).await?;
         Ok(response)
     }
+
+    async fn update_user_location(&self, user_id: i64,
+                                  latitude: f64, longitude: f64) -> anyhow::Result<Response> {
+        let app = self.router.clone();
+        let response = app.oneshot(
+            Request::builder()
+                .method(http::Method::POST)
+                .uri(format!("/{user_id}/location/?latitude={latitude}&longitude={longitude}"))
+                .body(Body::empty())?
+        ).await?;
+        Ok(response)
+    }
+
+    async fn activate_user_premium(&self, user_id: i64, variant: &str) -> anyhow::Result<Response> {
+        let app = self.router.clone();
+        let response = app.oneshot(
+            Request::builder()
+                .method(http::Method::POST)
+                .uri(format!("/{user_id}/premium/activate/{variant}"))
+                .body(Body::empty())?
+        ).await?;
+        Ok(response)
+    }
 }
 
 #[tokio::test]
@@ -103,7 +126,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
 
     log::info!("create the first user");
     let response = client.create_user(&external_user, &service).await?;
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::CREATED);
     let body = to_json_value(response).await?;
     assert_eq!(body, json!({
         "status": "created",
@@ -112,7 +135,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
 
     log::info!("try to create the same user again");
     let response = client.create_user(&external_user, &service).await?;
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::FOUND);
     let body = to_json_value(response).await?;
     assert_eq!(body, json!({
         "status": "already_present",
@@ -142,9 +165,21 @@ async fn test_get_and_create() -> anyhow::Result<()> {
 async fn test_updates() -> anyhow::Result<()> {
     let client = UserServiceClient::new(build_repos_with_test_user());
     let username = build_external_user().name.unwrap();
+    let (latitude, longitude) = (12.345, 67.89);
 
     let response = client.update_user_language(1, "ru".try_into()?).await?;
     ensure_success(response).await?;
+
+    let response = client.update_user_location(1, latitude, longitude).await?;
+    ensure_success(response).await?;
+
+    let response = client.activate_user_premium(1, "week").await?;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let response = client.activate_user_premium(1, "month").await?;
+    ensure_success(response).await?;
+    // TODO: implement
+    // let response = client.activate_user_premium(1, "month").await?;
+    // assert_eq!(response.status(), StatusCode::CONFLICT);
 
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::OK);
@@ -154,9 +189,12 @@ async fn test_updates() -> anyhow::Result<()> {
         "name": username,
         "options": {
             "language_code": "ru",
-            "location": null
+            "location": {
+                "latitude": latitude,
+                "longitude": longitude
+            }
         },
-        "is_premium": false
+        "is_premium": true
     }));
 
     Ok(())

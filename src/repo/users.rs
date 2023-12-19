@@ -1,7 +1,7 @@
 use axum::async_trait;
 use chrono::{TimeZone, Utc};
 use derive_more::{Constructor, From};
-use crate::dto::{SavedUser, Code, ExternalUser, error::TypeConversionError};
+use crate::dto::{SavedUser, Code, ExternalUser, error::TypeConversionError, Location};
 use crate::repo::error::RepoError;
 
 #[derive(sqlx::FromRow)]
@@ -48,6 +48,13 @@ pub enum UpdateTarget {
     Language(Code),
     Location { latitude: f64, longitude: f64 },
     Premium { till: chrono::DateTime<Utc> },
+}
+
+impl From<Location> for UpdateTarget {
+    fn from(value: Location) -> Self {
+        let Location { latitude, longitude } = value;
+        Self::Location { latitude, longitude }
+    }
 }
 
 #[async_trait]
