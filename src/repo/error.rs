@@ -1,9 +1,10 @@
 use axum::Json;
 use axum::response::{IntoResponse, Response};
 use serde::{Serialize, Serializer};
+use serde_derive::Deserialize;
 use thiserror::Error;
 
-#[derive(Debug, serde_derive::Serialize, Error, derive_more::Display)]
+#[derive(Debug, serde_derive::Serialize, Deserialize, Error, derive_more::Display)]
 pub enum RepoError<EO: Serialize, EDB: Serialize = DatabaseError> {
     Database(EDB),
     Other(EO),

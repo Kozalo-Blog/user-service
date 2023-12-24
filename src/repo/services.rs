@@ -1,9 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use axum::async_trait;
 use tokio::sync::RwLock;
 use crate::dto::{Service, ServiceType};
 
-pub struct Services {
+#[async_trait]
+pub trait Services {
+    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error>;
+    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error>;
+}
+
+pub struct ServicesPostgres {
     pool: sqlx::Pool<sqlx::Postgres>,
     id_cache: Arc<RwLock<HashMap<ServiceKey, i32>>>
 }
@@ -17,15 +24,18 @@ impl From<Service> for ServiceKey {
     }
 }
 
-impl Services {
+impl ServicesPostgres {
     pub fn new(pool: sqlx::Pool<sqlx::Postgres>) -> Self {
         Self {
             pool,
             id_cache: Arc::new(RwLock::new(HashMap::new()))
         }
     }
+}
 
-    pub async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
+#[async_trait]
+impl Services for ServicesPostgres {
+    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
         log::info!("creation of a service '{name}' of type {service_type:?}...");
         sqlx::query_scalar!("INSERT INTO Services (type, name) VALUES ($1, $2) RETURNING id",
                 service_type as ServiceType, name)
@@ -33,7 +43,7 @@ impl Services {
             .await
     }
 
-    pub async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
+    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
         let cached_id = {
             self.id_cache
                 .read().await

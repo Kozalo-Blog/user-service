@@ -14,7 +14,6 @@ message UpdateUserRequest {
   oneof target {
     string language = 2;
     Location location = 3;
-    google.protobuf.Timestamp premium_active_till = 4;
   }
 }
 
@@ -32,4 +31,22 @@ enum RegistrationStatus {
   REGISTRATION_STATUS_UNSPECIFIED = 0;
   REGISTRATION_STATUS_CREATED = 1;
   REGISTRATION_STATUS_ALREADY_PRESENT = 2;
+}
+
+message ActivatePremiumRequest {
+  int64 id = 1;
+  PremiumVariant variant = 2;
+}
+
+message ActivatePremiumResponse {
+  bool updated = 1;
+  optional google.protobuf.Timestamp active_till = 2;
+}
+
+enum PremiumVariant {
+  PREMIUM_VARIANT_UNSPECIFIED = 0;
+  PREMIUM_VARIANT_MONTH = 1;
+  PREMIUM_VARIANT_QUARTER = 2;
+  PREMIUM_VARIANT_HALF_YEAR = 3;
+  PREMIUM_VARIANT_YEAR = 4;
 }

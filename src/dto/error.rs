@@ -1,7 +1,7 @@
 use std::fmt::Formatter;
 use derive_more::{Constructor, Display};
 use serde::Serializer;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error, Constructor)]
@@ -10,11 +10,14 @@ pub struct VecLengthAssertionError<T> {
     expected_length: usize,
 }
 
-#[derive(Debug, Display, Serialize, Error)]
+#[derive(Debug, Display, Serialize, Deserialize, Error)]
 pub struct CodeStringLengthError;
 
 #[derive(Debug, Display, Error)]
 pub struct TypeConversionError(Box<dyn std::error::Error + Send + Sync + 'static>);
+
+#[derive(Debug, Display, Error)]
+pub struct EnumUnspecifiedValue;
 
 
 // IMPLEMENTATIONS

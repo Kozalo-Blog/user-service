@@ -1,14 +1,15 @@
+use std::str::FromStr;
 use std::sync::Arc;
 use axum::{Extension, Json};
 use axum::extract::{Path, Query};
 use axum::routing::{get, post, put};
 use axum_route_error::RouteError;
-use crate::dto::{Code, RegistrationResponse, RegistrationStatus};
+use axum::http::StatusCode;
+use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus};
 use crate::dto::error::CodeStringLengthError;
 use crate::repo;
-use crate::repo::error::{DatabaseError, RepoError};
-use crate::repo::users::UserId;
-use crate::rest::{RegistrationRequest, Success, UserView};
+use crate::repo::users::{UpdateTarget, UserId};
+use crate::rest::{PremiumActivationResult, PremiumVariantRest, RegistrationRequest, RestError, Success, UserView};
 
 pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
     axum::Router::new()
@@ -17,7 +18,7 @@ pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
         .route("/external", put(register_user))
         .route("/:id/language/:code", post(update_language))
         .route("/:id/location/", post(update_location))
-        .route("/:id/premium/activate", post(activate_premium))
+        .route("/:id/premium/activate/:variant", post(activate_premium))
         .layer(Extension(repos))
 }
 
@@ -49,53 +50,57 @@ async fn get_user_impl(
 async fn register_user(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Json(req): Json<RegistrationRequest>,
-) -> Result<Json<RegistrationResponse>, DatabaseError> {
-    let service_id = match repos.services.get_id(&req.service).await? {
+) -> Result<(StatusCode, Json<RegistrationResponse>), RouteError<RestError>> {
+    let maybe_service = repos.services.get_id(&req.service).await
+        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+    let service_id = match maybe_service {
         Some(id) => id,
         None => repos.services.create(req.service.service_type, &req.service.name).await?
     };
 
-    let user_id = repos.users.get_user_id(service_id, req.user.external_id).await?;
+    let user_id = repos.users.get_user_id(service_id, req.user.external_id).await
+        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
     let status = match user_id {
-        Some(id) => RegistrationStatus::AlreadyPresent.with_id(id),
+        Some(id) => (StatusCode::FOUND, RegistrationStatus::AlreadyPresent.with_id(id)),
         None => {
-            let id = repos.users.register(req.user, service_id).await?;
-            RegistrationStatus::Created.with_id(id)
+            let id = repos.users.register(req.user, service_id).await
+                .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+            (StatusCode::CREATED, RegistrationStatus::Created.with_id(id))
         }
     };
-    Ok(Json(status))
+    Ok((status.0, Json(status.1)))
 }
 
 async fn update_language(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path((id, code)): Path<(i64, String)>,
-) -> Result<Success, Json<RepoError<CodeStringLengthError>>> {
+) -> Result<Success, RouteError<RestError>> {
     let lang_code: Code = code.try_into()
-        .map_err(|e| RepoError::Other(e))?;
-    repos.users.update_value(id, lang_code.into())
-        .await
-        .map_err(|e| RepoError::Database(e.into()))?;
-    Ok(Success)
+        .map_err(|e: CodeStringLengthError| RouteError::new_bad_request().set_error_data(e.into()))?;
+    update_impl(repos, id, lang_code.into()).await
 }
 
 async fn update_location(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path(id): Path<i64>,
-    Query(location): Query<(f64, f64)>,
-) -> Result<Success, Json<RepoError<CodeStringLengthError>>> {
-    repos.users.update_value(id, location.into())
-        .await
-        .map_err(|e| RepoError::Database(e.into()))?;
+    Query(location): Query<Location>,
+) -> Result<Success, RouteError<RestError>> {
+    update_impl(repos, id, location.into()).await
+}
+
+async fn update_impl(repos: Arc<repo::Repositories>, id: i64, target: UpdateTarget) -> Result<Success, RouteError<RestError>> {
+    repos.users.update_value(id, target).await
+        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
     Ok(Success)
 }
 
 async fn activate_premium(
     Extension(repos): Extension<Arc<repo::Repositories>>,
-    Path(id): Path<i64>,
-    Query(till): Query<chrono::DateTime<chrono::Utc>>,
-) -> Result<Success, Json<RepoError<CodeStringLengthError>>> {
-    repos.users.update_value(id, till.into())
-        .await
-        .map_err(|e| RepoError::Database(e.into()))?;
-    Ok(Success)
+    Path((id, till)): Path<(i64, String)>,
+) -> Result<Json<PremiumActivationResult>, RouteError<RestError>> {
+    let variant = PremiumVariantRest::from_str(&till)
+        .map_err(|e| RouteError::new_bad_request().set_error_data(e.into()))?;
+    let activation_result = repos.users.activate_premium(id, variant.into()).await
+        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+    Ok(Json(PremiumActivationResult::from(activation_result)))
 }

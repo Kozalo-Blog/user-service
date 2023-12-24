@@ -1,10 +1,11 @@
-use chrono::{DateTime, Utc};
+use std::ops::Add;
+use chrono::{DateTime, Months, Utc};
 use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
 use crate::dto::error::{CodeStringLengthError, VecLengthAssertionError};
 
 /// DTO for JSON request and `repo::Users::register()`
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExternalUser {
     pub external_id: i64,
     pub name: Option<String>,
@@ -12,6 +13,7 @@ pub struct ExternalUser {
 
 /// Public DTO for the users fetched from the database.
 /// See `crate::repo::users::UserInternal` to see the other, internal, side.
+#[derive(Clone)]
 pub struct SavedUser {
     pub id: i64,
     pub name: Option<String>,
@@ -20,7 +22,7 @@ pub struct SavedUser {
     pub premium_till: Option<DateTime<Utc>>
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, From)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, From)]
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
@@ -28,6 +30,13 @@ pub struct Location {
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct Code([char; 2]);
+
+#[cfg(test)]
+impl std::fmt::Display for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}{}", self.0[0], self.0[1]))
+    }
+}
 
 
 // IMPLEMENTATIONS
@@ -85,5 +94,31 @@ impl TryFrom<&str> for Code {
 impl Into<String> for Code {
     fn into(self) -> String {
         format!("{}{}", self.0[0], self.0[1])
+    }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum PremiumVariant {
+    Month = 1,
+    Quarter = 3,
+    HalfYear = 6,
+    Year = 12,
+}
+
+impl Into<DateTime<Utc>> for PremiumVariant {
+    fn into(self) -> DateTime<Utc> {
+        self + Utc::now()
+    }
+}
+
+impl Add<DateTime<Utc>> for PremiumVariant {
+    type Output = DateTime<Utc>;
+
+    fn add(self, initial_date: DateTime<Utc>) -> Self::Output {
+        let months = Months::new(self as u32);
+        initial_date
+            .checked_add_months(months)
+            .expect("something very bad was happened: the date, till the premium subscription will be active, is out of range O_o")
     }
 }

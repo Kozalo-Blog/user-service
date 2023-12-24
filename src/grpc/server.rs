@@ -1,12 +1,14 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 use autometrics::autometrics;
 use derive_more::Constructor;
 use prost::DecodeError;
 use tonic::{Request, Response, Status};
 use crate::grpc::generated::user_service_server::UserService;
-use crate::grpc::generated::{GetUserRequest, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
+use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
 use crate::dto::RegistrationStatus;
 use crate::{dto, repo};
+use crate::dto::error::EnumUnspecifiedValue;
 use crate::grpc::generated::{TargetConversionError, UnspecifiedServiceType};
 use crate::repo::users::UserId;
 
@@ -79,5 +81,31 @@ impl UserService for GrpcServer {
         self.repos.users.update_value(req.id, repo_target).await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(()))
+    }
+
+    async fn activate_premium(&self, request: Request<ActivatePremiumRequest>) -> Result<Response<ActivatePremiumResponse>, Status> {
+        let req = request.into_inner();
+        let grpc_variant = PremiumVariant::try_from(req.variant)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let variant = grpc_variant.try_into()
+            .map_err(|e: EnumUnspecifiedValue| Status::invalid_argument(e.to_string()))?;
+        let updated= self.repos.users.activate_premium(req.id, variant).await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let response = match updated {
+            None => ActivatePremiumResponse {
+                updated: false,
+                active_till: None,
+            },
+            Some(till) => {
+                let system_time = SystemTime::from(till);
+                let timestamp = system_time.into();
+                ActivatePremiumResponse {
+                    updated: true,
+                    active_till: Some(timestamp),
+                }
+            }
+        };
+        Ok(Response::new(response))
     }
 }
