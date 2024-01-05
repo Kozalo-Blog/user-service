@@ -38,7 +38,7 @@ impl UserService for GrpcServer {
     async fn register(&self, request: Request<RegistrationRequest>) -> Result<Response<RegistrationResponse>, Status> {
         let req = request.into_inner();
 
-        let (service_name, service_type_id) = req.service.map(|s| (s.name, s.r#type))
+        let (service_name, service_type_id) = req.service.map(|s| (s.name, s.kind))
             .ok_or(Status::invalid_argument("The 'service' field is not set"))?;
         let grpc_service_type: ServiceType = service_type_id.try_into()
             .map_err(|e: DecodeError| Status::invalid_argument(e.to_string()))?;
@@ -62,7 +62,10 @@ impl UserService for GrpcServer {
 
         let resp = match maybe_user_id {
             None => {
-                let id = self.repos.users.register(external_user, service_id).await
+                let consent_info = req.consent_info
+                    .and_then(|info| serde_json::to_value(info).ok())
+                    .ok_or(Status::invalid_argument("The 'consent_info' field is not set or invalid"))?;
+                let id = self.repos.users.register(external_user, service_id, consent_info).await
                     .map_err(|e| Status::internal(e.to_string()))?;
                 RegistrationStatus::Created.with_id(id)
             }

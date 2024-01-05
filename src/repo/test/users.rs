@@ -1,4 +1,5 @@
 use chrono::{Months, Timelike, Utc};
+use serde_json::json;
 use sqlx::{Pool, Postgres};
 use testcontainers::clients;
 use tokio::join;
@@ -47,7 +48,7 @@ async fn create_user(users: &repo::UsersPostgres, service_id: i32) -> anyhow::Re
         name: Some(TEST_NAME.to_owned()),
         external_id: TEST_UID_EXT,
     };
-    users.register(external_user, service_id)
+    users.register(external_user, service_id, json!({"test": true}))
         .await
         .map_err(Into::into)
 }

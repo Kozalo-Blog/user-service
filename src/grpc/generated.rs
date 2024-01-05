@@ -6,7 +6,7 @@ use crate::grpc::generated::update_user_request::Target;
 use crate::grpc::generated::user::Options;
 use crate::repo::users::UpdateTarget;
 
-tonic::include_proto!("grpc");
+tonic::include_proto!("user_service");
 
 impl Into<dto::ExternalUser> for ExternalUser {
     fn into(self) -> dto::ExternalUser {

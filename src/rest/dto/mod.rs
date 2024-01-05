@@ -13,6 +13,7 @@ use crate::dto::{ExternalUser, PremiumVariant, Service};
 pub struct RegistrationRequest {
     pub user: ExternalUser,
     pub service: Service,
+    pub consent_info: serde_json::Value,
 }
 
 #[derive(Clone, FromStr)]

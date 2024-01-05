@@ -95,7 +95,7 @@ impl Users for UsersMock {
         }
     }
 
-    async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, sqlx::Error> {
+    async fn register(&self, user: ExternalUser, service_id: i32, _: serde_json::Value) -> Result<i64, sqlx::Error> {
         log::info!("UsersMock:register: {user:?} (service_id = {service_id})");
         let id = self.gen_id().await;
         let saved_user = SavedUser {

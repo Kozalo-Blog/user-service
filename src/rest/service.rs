@@ -63,7 +63,7 @@ async fn register_user(
     let status = match user_id {
         Some(id) => (StatusCode::FOUND, RegistrationStatus::AlreadyPresent.with_id(id)),
         None => {
-            let id = repos.users.register(req.user, service_id).await
+            let id = repos.users.register(req.user, service_id, req.consent_info).await
                 .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
             (StatusCode::CREATED, RegistrationStatus::Created.with_id(id))
         }
