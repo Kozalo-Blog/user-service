@@ -61,7 +61,7 @@ impl From<Location> for UpdateTarget {
 #[async_trait]
 pub trait Users {
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>>;
-    async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, sqlx::Error>;
+    async fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> Result<i64, sqlx::Error>;
     async fn get_user_id(&self, service_id: i32, external_id: i64) -> Result<Option<i64>, sqlx::Error>;
     async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error>;
     async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error>;
@@ -91,14 +91,18 @@ impl Users for UsersPostgres {
         }
     }
 
-    async fn register(&self, user: ExternalUser, service_id: i32) -> Result<i64, sqlx::Error> {
+    async fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> Result<i64, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         let user_id = sqlx::query_scalar!("INSERT INTO Users (name) VALUES ($1) RETURNING id",
                 user.name)
             .fetch_one(&mut *tx)
             .await?;
-        sqlx::query_scalar!("INSERT INTO User_Service_Mappings (user_id, service_id, external_id) VALUES ($1, $2, $3)",
+        sqlx::query!("INSERT INTO User_Service_Mappings (user_id, service_id, external_id) VALUES ($1, $2, $3)",
                 user_id, service_id, user.external_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query!("INSERT INTO Consents (uid, service_id, info) VALUES ($1, $2, $3)",
+                user_id, service_id, consent_info)
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;

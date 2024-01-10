@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use anyhow::anyhow;
 use chrono::{DateTime, Months, Timelike, Utc};
+use serde_json::json;
 use tokio::net::TcpListener;
 use tonic::Code;
 use tonic::transport::{Channel, Server};
@@ -38,8 +39,9 @@ async fn test_all() -> anyhow::Result<()> {
         }),
         service: Some(Service {
             name: service_name.clone(),
-            r#type: ServiceType::TelegramBot.into(),
+            kind: ServiceType::TelegramBot.into(),
         }),
+        consent_info: Some(serde_json::from_value(json!({"test": true}))?),
     };
     test_registration(&mut client, registration_req.clone(), RegistrationStatus::Created).await?;
     test_registration(&mut client, registration_req, RegistrationStatus::AlreadyPresent).await?;

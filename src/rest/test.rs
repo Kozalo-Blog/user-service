@@ -63,7 +63,8 @@ impl UserServiceClient {
                         "service": {
                             "name": service.name,
                             "type": service.service_type
-                        }
+                        },
+                        "consent_info": {"test": true}
                     }))?
                 ))?
         ).await?;

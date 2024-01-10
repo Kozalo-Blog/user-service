@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS Services (
 );
 
 CREATE TABLE IF NOT EXISTS Consents (
-    uid int PRIMARY KEY REFERENCES Users(id),
+    uid bigint PRIMARY KEY REFERENCES Users(id),
     obtained_at timestamptz NOT NULL DEFAULT current_timestamp,
     service_id int NOT NULL REFERENCES Services(id),
     info jsonb
