@@ -57,13 +57,23 @@ async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
         .layer(prometheus_layer);
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
 }
 
 async fn run_grpc_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
     Server::builder()
         .add_service(UserServiceServer::new(GrpcServer::new(repos)))
-        .serve(([0,0,0,0], TONIC_PORT).into()).await?;
+        .serve_with_shutdown(([0,0,0,0], TONIC_PORT).into(), shutdown_signal())
+        .await?;
     Ok(())
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install CTRL+C signal handler");
+    log::info!("Shutdown of the servers…");
 }
