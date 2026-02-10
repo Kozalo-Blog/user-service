@@ -129,3 +129,98 @@ GitHub Actions workflow (`.github/workflows/rust.yml`):
 ## Graceful Shutdown
 
 The service implements graceful shutdown for both servers, listening for SIGTERM/SIGINT signals to cleanly close connections before terminating.
+
+## Distributed Tracing
+
+The service implements comprehensive distributed tracing with OpenTelemetry OTLP export to VictoriaStack/Grafana.
+
+### Configuration
+
+Tracing is configured via environment variables in `.env` or `.env.example`:
+
+```bash
+# OpenTelemetry OTLP endpoint (default: http://localhost:4317)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# Service name for trace identification (default: user-service)
+OTEL_SERVICE_NAME=user-service
+
+# Log level filtering (default: info,user_service=debug)
+RUST_LOG=info,user_service=debug
+```
+
+### Implementation Details
+
+**Instrumented Layers:**
+- All REST handlers (8 functions in `src/rest/service.rs`)
+- All gRPC handlers (4 functions in `src/grpc/server.rs`)
+- All repository methods (7 functions in `src/repo/users.rs` and `src/repo/services.rs`)
+
+**Features:**
+- Automatic span creation with `#[tracing::instrument]` attributes
+- Structured logging with context (tracing::info!, debug!, warn!, error!)
+- Error recording in spans with full error details
+- Span timing for performance analysis
+- Request-level visibility into dual-server architecture
+
+**Trace Context Propagation:**
+- REST API: Automatic `traceparent` header propagation via `OtelAxumLayer`
+- gRPC: Automatic context propagation through global tracing subscriber
+- Cross-service tracing support for distributed request flows
+
+**Output Destinations:**
+- Console: Structured formatted output with timestamps, targets, and line numbers
+- OTLP Exporter: Batched span export to VictoriaStack/Grafana for visualization
+
+**Initialization:**
+- Tracing starts in `main.rs` via `observability::init_tracing()`
+- Graceful shutdown flushes pending spans before service termination
+- Located in `src/observability.rs`
+
+### Testing Locally
+
+1. **Set up OpenTelemetry collector or VictoriaStack:**
+   ```bash
+   # Example with Docker - Jaeger all-in-one
+   docker run -d --name jaeger \
+     -p 4317:4317 \
+     -p 16686:16686 \
+     jaegertracing/all-in-one:latest
+   ```
+
+2. **Configure environment:**
+   ```bash
+   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+   export OTEL_SERVICE_NAME=user-service
+   export RUST_LOG=debug
+   ```
+
+3. **Run the service:**
+   ```bash
+   cargo run
+   ```
+
+4. **Generate traces:**
+   ```bash
+   # REST request
+   curl http://localhost:8080/api/rest/v1/user/1
+
+   # gRPC request (requires grpcurl)
+   grpcurl -plaintext -d '{"id": 1, "by_external_id": false}' \
+     localhost:8090 user_service.UserService/Get
+   ```
+
+5. **View traces:**
+   - Open Jaeger UI: http://localhost:16686
+   - Or VictoriaStack/Grafana interface
+   - Search for service: "user-service"
+   - View trace hierarchies showing handler → repository spans
+
+### Metrics Integration
+
+Tracing complements existing observability:
+- **Autometrics**: Function-level metrics at `/metrics` endpoint (maintained)
+- **Prometheus**: Custom metrics via `axum-prometheus` (maintained)
+- **Tracing**: Request-level distributed traces with timing and context (new)
+
+Together, these provide comprehensive observability: metrics for aggregates, traces for request flows.
