@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use axum::async_trait;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use num_traits::PrimInt;
 use tokio::sync::Mutex;

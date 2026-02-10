@@ -42,7 +42,7 @@ axum-tracing-opentelemetry = "0.21.1"
 tonic-tracing-opentelemetry = "0.21.0"
 
 [dev-dependencies]
-testcontainers = "0.23.1"
+testcontainers = "0.15.0"
 http = "1.2.0"
 http-body-util = "0.1.2"
 mime = "0.3.17"

@@ -16,7 +16,7 @@ const POSTGRES_PASSWORD: &str = "test_pw";
 const POSTGRES_DB: &str = "test_db";
 const POSTGRES_PORT: u16 = 5432;
 
-pub async fn start_postgres(docker: &clients::Cli) -> (Container<GenericImage>, Pool<Postgres>) {
+pub async fn start_postgres(docker: &clients::Cli) -> (Container<'_, GenericImage>, Pool<Postgres>) {
     let postgres_image = GenericImage::new("postgres", "latest")
         .with_exposed_port(POSTGRES_PORT)
         .with_wait_for(WaitFor::message_on_stdout("PostgreSQL init process complete; ready for start up."))
