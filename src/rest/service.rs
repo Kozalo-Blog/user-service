@@ -22,6 +22,7 @@ pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
         .layer(Extension(repos))
 }
 
+#[tracing::instrument(skip(repos), fields(user_id = %id))]
 async fn get_user(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path(id): Path<i64>,
@@ -29,6 +30,7 @@ async fn get_user(
     get_user_impl(repos, UserId::Internal(id)).await
 }
 
+#[tracing::instrument(skip(repos), fields(external_id = %id))]
 async fn get_external_user(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path(id): Path<i64>,
@@ -47,39 +49,58 @@ async fn get_user_impl(
     Ok(Json(user))
 }
 
+#[tracing::instrument(skip(repos, req), fields(external_id = %req.user.external_id, service_type = ?req.service.service_type))]
 async fn register_user(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Json(req): Json<RegistrationRequest>,
 ) -> Result<(StatusCode, Json<RegistrationResponse>), RouteError<RestError>> {
     let maybe_service = repos.services.get_id(&req.service).await
-        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get service ID");
+            RouteError::new_internal_server().set_error_data(e.into())
+        })?;
     let service_id = match maybe_service {
         Some(id) => id,
         None => repos.services.create(req.service.service_type, &req.service.name).await?
     };
 
     let user_id = repos.users.get_user_id(service_id, req.user.external_id).await
-        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get user ID");
+            RouteError::new_internal_server().set_error_data(e.into())
+        })?;
     let status = match user_id {
-        Some(id) => (StatusCode::FOUND, RegistrationStatus::AlreadyPresent.with_id(id)),
+        Some(id) => {
+            tracing::info!(user_id = %id, "User already registered");
+            (StatusCode::FOUND, RegistrationStatus::AlreadyPresent.with_id(id))
+        }
         None => {
             let id = repos.users.register(req.user, service_id, req.consent_info).await
-                .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to register user");
+                    RouteError::new_internal_server().set_error_data(e.into())
+                })?;
+            tracing::info!(user_id = %id, "User registered successfully");
             (StatusCode::CREATED, RegistrationStatus::Created.with_id(id))
         }
     };
     Ok((status.0, Json(status.1)))
 }
 
+#[tracing::instrument(skip(repos), fields(user_id = %id, language_code = %code))]
 async fn update_language(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path((id, code)): Path<(i64, String)>,
 ) -> Result<Success, RouteError<RestError>> {
     let lang_code: Code = code.try_into()
-        .map_err(|e: CodeStringLengthError| RouteError::new_bad_request().set_error_data(e.into()))?;
+        .map_err(|e: CodeStringLengthError| {
+            tracing::warn!(error = %e, "Invalid language code format");
+            RouteError::new_bad_request().set_error_data(e.into())
+        })?;
     update_impl(repos, id, lang_code.into()).await
 }
 
+#[tracing::instrument(skip(repos), fields(user_id = %id, lat = %location.latitude, lon = %location.longitude))]
 async fn update_location(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path(id): Path<i64>,
@@ -90,17 +111,28 @@ async fn update_location(
 
 async fn update_impl(repos: Arc<repo::Repositories>, id: i64, target: UpdateTarget) -> Result<Success, RouteError<RestError>> {
     repos.users.update_value(id, target).await
-        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to update user");
+            RouteError::new_internal_server().set_error_data(e.into())
+        })?;
     Ok(Success)
 }
 
+#[tracing::instrument(skip(repos), fields(user_id = %id, variant = %till))]
 async fn activate_premium(
     Extension(repos): Extension<Arc<repo::Repositories>>,
     Path((id, till)): Path<(i64, String)>,
 ) -> Result<Json<PremiumActivationResult>, RouteError<RestError>> {
     let variant = PremiumVariantRest::from_str(&till)
-        .map_err(|e| RouteError::new_bad_request().set_error_data(e.into()))?;
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Invalid premium variant");
+            RouteError::new_bad_request().set_error_data(e.into())
+        })?;
     let activation_result = repos.users.activate_premium(id, variant.into()).await
-        .map_err(|e| RouteError::new_internal_server().set_error_data(e.into()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to activate premium");
+            RouteError::new_internal_server().set_error_data(e.into())
+        })?;
+    tracing::info!(?activation_result, "Premium activation completed");
     Ok(Json(PremiumActivationResult::from(activation_result)))
 }

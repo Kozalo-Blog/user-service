@@ -2,6 +2,7 @@ mod repo;
 mod dto;
 mod grpc;
 mod rest;
+mod observability;
 
 use std::sync::Arc;
 use axum::routing::get;
@@ -19,6 +20,10 @@ const TONIC_PORT: u16 = 8090;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
     #[cfg(debug_assertions)] dotenvy::dotenv()?;
+
+    // Initialize distributed tracing
+    observability::init_tracing()?;
+
     autometrics::prometheus_exporter::init();
 
     let db_config = repo::DatabaseConfig::from_env()?;
@@ -35,6 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (rest_res, grpc_res) = join!(rest_srv_handle, grpc_srv_handle);
     (rest_res??, grpc_res??);
+
+    // Shutdown tracing provider gracefully
+    observability::shutdown_tracing();
+
     Ok(())
 }
 

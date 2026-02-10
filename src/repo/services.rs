@@ -35,14 +35,18 @@ impl ServicesPostgres {
 
 #[async_trait]
 impl Services for ServicesPostgres {
+    #[tracing::instrument(skip(self), fields(service_type = ?service_type, name = %name))]
     async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
-        log::info!("creation of a service '{name}' of type {service_type:?}...");
-        sqlx::query_scalar!("INSERT INTO Services (type, name) VALUES ($1, $2) RETURNING id",
+        tracing::info!("Creating new service");
+        let result = sqlx::query_scalar!("INSERT INTO Services (type, name) VALUES ($1, $2) RETURNING id",
                 service_type as ServiceType, name)
             .fetch_one(&self.pool)
-            .await
+            .await?;
+        tracing::info!(service_id = %result, "Service created successfully");
+        Ok(result)
     }
 
+    #[tracing::instrument(skip(self), fields(service_name = %service.name, service_type = ?service.service_type))]
     async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
         let cached_id = {
             self.id_cache
@@ -51,19 +55,22 @@ impl Services for ServicesPostgres {
                 .map(|v| *v)
         };
         let id = if cached_id.is_none() {
-            log::info!("fetching a service id for '{}' [type={:?}]", service.name, service.service_type);
+            tracing::debug!("Cache miss - fetching service ID from database");
             let fetched_id = sqlx::query_scalar!("SELECT id FROM Services WHERE name = $1 AND type = $2",
                     &service.name, service.service_type as ServiceType)
                 .fetch_optional(&self.pool)
                 .await?;
             if let Some(id) = fetched_id {
+                tracing::debug!(service_id = %id, "Service ID found, caching");
                 self.id_cache
                     .write().await
                     .insert(service.clone().into(), id);
+            } else {
+                tracing::debug!("Service not found in database");
             }
             fetched_id
         } else {
-            log::debug!("cached id {cached_id:?} is used for '{}' [type={:?}]", service.name, service.service_type);
+            tracing::debug!(cached_id = ?cached_id, "Cache hit - using cached service ID");
             cached_id
         };
         Ok(id)
