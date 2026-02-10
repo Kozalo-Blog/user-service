@@ -63,7 +63,8 @@ async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
 
             metric_handle.render() + &auto_metrics + &custom_metrics
         }))
-        .layer(prometheus_layer);
+        .layer(prometheus_layer)
+        .layer(axum_tracing_opentelemetry::middleware::OtelAxumLayer::default());
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
     axum::serve(listener, app)
@@ -73,6 +74,11 @@ async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
 }
 
 async fn run_grpc_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
+    // Note: gRPC trace context propagation happens automatically through the global
+    // tracing subscriber with OpenTelemetry layer configured in observability::init_tracing().
+    // The tonic-tracing-opentelemetry crate provides extensions for automatic span creation,
+    // but explicit middleware is not needed - spans are created by our #[tracing::instrument] attributes.
+
     Server::builder()
         .add_service(UserServiceServer::new(GrpcServer::new(repos)))
         .serve_with_shutdown(([0,0,0,0], TONIC_PORT).into(), shutdown_signal())
