@@ -98,7 +98,7 @@ impl Into<String> for Code {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PremiumVariant {
     Month = 1,
     Quarter = 3,

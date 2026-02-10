@@ -1,4 +1,4 @@
-use axum::async_trait;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use derive_more::{Constructor, From};
 use num_traits::Zero;
@@ -39,7 +39,7 @@ impl TryFrom<UserInternal> for SavedUser {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum UserId {
     Internal(i64),
     External(i64),

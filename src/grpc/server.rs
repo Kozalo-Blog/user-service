@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use autometrics::autometrics;
 use derive_more::Constructor;
-use prost::DecodeError;
 use tonic::{Request, Response, Status};
 use crate::grpc::generated::user_service_server::UserService;
 use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
@@ -55,9 +54,9 @@ impl UserService for GrpcServer {
                 Status::invalid_argument("The 'service' field is not set")
             })?;
         let grpc_service_type: ServiceType = service_type_id.try_into()
-            .map_err(|e: DecodeError| {
-                tracing::warn!(error = %e, "Invalid service type");
-                Status::invalid_argument(e.to_string())
+            .map_err(|e| {
+                tracing::warn!("Invalid service type: {:?}", e);
+                Status::invalid_argument(format!("Invalid service type: {:?}", e))
             })?;
         let service_type: dto::ServiceType = grpc_service_type.try_into()
             .map_err(|e: UnspecifiedServiceType| {

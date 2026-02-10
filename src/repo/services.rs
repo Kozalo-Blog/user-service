@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use axum::async_trait;
+use async_trait::async_trait;
 use tokio::sync::RwLock;
 use crate::dto::{Service, ServiceType};
 
