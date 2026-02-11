@@ -3056,26 +3056,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tonic-tracing-opentelemetry"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6189e979896bf663c2478b4b4d04278c356a02dc8d80228d002e5535fe976e68"
-dependencies = [
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "hyper",
- "opentelemetry 0.25.0",
- "pin-project-lite",
- "tonic",
- "tower 0.5.3",
- "tracing",
- "tracing-opentelemetry 0.26.0",
- "tracing-opentelemetry-instrumentation-sdk",
-]
-
-[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3380,7 +3360,6 @@ dependencies = [
  "log",
  "mime",
  "num-traits",
- "once_cell",
  "opentelemetry 0.26.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.26.0",
@@ -3399,7 +3378,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-build",
- "tonic-tracing-opentelemetry",
  "tower 0.5.3",
  "tracing",
  "tracing-opentelemetry 0.27.0",
