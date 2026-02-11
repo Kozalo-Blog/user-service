@@ -76,7 +76,7 @@ async fn test_update_user(users: &repo::UsersPostgres, created_user_id: i64, cod
         users.update_value(created_user_id, TEST_LOCATION.into()),
         users.activate_premium(created_user_id, PremiumVariant::Month)
     );
-    (r1?, r2?);
+    r1?; r2?;
     assert!(r3?.is_some());
     Ok(())
 }

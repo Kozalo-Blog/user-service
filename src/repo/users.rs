@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use derive_more::{Constructor, From};
 use num_traits::Zero;
@@ -58,13 +57,12 @@ impl From<Location> for UpdateTarget {
     }
 }
 
-#[async_trait]
-pub trait Users {
-    async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>>;
-    async fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> Result<i64, sqlx::Error>;
-    async fn get_user_id(&self, service_id: i32, external_id: i64) -> Result<Option<i64>, sqlx::Error>;
-    async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error>;
-    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error>;
+pub trait Users: Send + Sync {
+    fn get(&self, id: UserId) -> impl Future<Output = Result<Option<SavedUser>, RepoError<TypeConversionError>>> + Send;
+    fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> impl Future<Output = Result<i64, sqlx::Error>> + Send;
+    fn get_user_id(&self, service_id: i32, external_id: i64) -> impl Future<Output = Result<Option<i64>, sqlx::Error>> + Send;
+    fn update_value(&self, user_id: i64, target: UpdateTarget) -> impl Future<Output = Result<(), sqlx::Error>> + Send;
+    fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> impl Future<Output = Result<Option<DateTime<Utc>>, sqlx::Error>> + Send;
 }
 
 #[derive(Clone, Constructor)]
@@ -72,7 +70,6 @@ pub struct UsersPostgres {
     pool: sqlx::Pool<sqlx::Postgres>
 }
 
-#[async_trait]
 impl Users for UsersPostgres {
     #[tracing::instrument(skip(self), fields(user_id = match id { UserId::Internal(id) => format!("internal:{}", id), UserId::External(id) => format!("external:{}", id) }))]
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>> {
@@ -94,7 +91,7 @@ impl Users for UsersPostgres {
         match result {
             Ok(Some(user)) => {
                 tracing::debug!("User found in database");
-                user.try_into().map_err(|e| RepoError::Other(e)).map(Some)
+                user.try_into().map_err(RepoError::Other).map(Some)
             }
             Ok(None) => {
                 tracing::debug!("User not found in database");
@@ -159,7 +156,7 @@ impl Users for UsersPostgres {
         let rows_affected = match target {
             UpdateTarget::Language(ref code) => {
                 tracing::debug!(?code, "Updating language");
-                self.update_language(user_id, code.clone()).await
+                self.update_language(user_id, *code).await
             }
             UpdateTarget::Location { latitude, longitude } => {
                 tracing::debug!(latitude, longitude, "Updating location");

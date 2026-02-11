@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db_config = repo::DatabaseConfig::from_env()?;
     let db = repo::establish_database_connection(&db_config).await?;
-    let rest_repos = Arc::new(repo::Repositories::new(db));
+    let rest_repos = Arc::new(repo::ProdRepositories::from_db(db));
     let grpc_repos = rest_repos.clone();
 
     let rest_srv_handle = tokio::spawn(async move {
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
+async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
     let prometheus = prometheus::Registry::new();
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
@@ -76,7 +76,7 @@ async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_grpc_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
+async fn run_grpc_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
     // Note: gRPC trace context propagation happens automatically through the global
     // tracing subscriber with OpenTelemetry layer configured in observability::init_tracing().
     // The tonic-tracing-opentelemetry crate provides extensions for automatic span creation,

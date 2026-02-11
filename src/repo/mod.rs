@@ -26,16 +26,33 @@ impl DatabaseConfig {
     }
 }
 
-pub struct Repositories {
-    pub users: Box<dyn Users + Sync + Send + 'static>,
-    pub services: Box<dyn Services + Sync + Send + 'static>,
+pub struct Repositories<U, S>
+where
+    U: Users,
+    S: Services,
+{
+    pub users: U,
+    pub services: S,
 }
 
-impl Repositories {
-    pub fn new(db: sqlx::Pool<sqlx::Postgres>) -> Self {
+#[cfg(test)]
+impl<U, S> Repositories<U, S>
+where
+    U: Users,
+    S: Services,
+{
+    pub fn new(users: U, services: S) -> Self {
+        Self { users, services }
+    }
+}
+
+pub type ProdRepositories = Repositories<UsersPostgres, ServicesPostgres>;
+
+impl ProdRepositories {
+    pub fn from_db(db: sqlx::Pool<sqlx::Postgres>) -> Self {
         Self {
-            users: Box::new(UsersPostgres::new(db.clone())),
-            services: Box::new(ServicesPostgres::new(db.clone())),
+            users: UsersPostgres::new(db.clone()),
+            services: ServicesPostgres::new(db),
         }
     }
 }

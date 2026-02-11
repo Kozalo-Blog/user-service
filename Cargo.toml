@@ -29,7 +29,6 @@ log = "0.4.22"
 prometheus = "0.14.0"
 derive_more = { version = "2.1.1", features = ["display", "constructor", "from", "error", "from_str"] }
 thiserror = "2.0.18"
-async-trait = "0.1.83"
 autometrics = { version = "3.0.0", features = ["prometheus-exporter"] }
 num-traits = "0.2.19"
 tracing = "0.1.41"

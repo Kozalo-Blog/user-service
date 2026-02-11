@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use async_trait::async_trait;
 use tokio::sync::RwLock;
 use crate::dto::{Service, ServiceType};
 
-#[async_trait]
-pub trait Services {
-    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error>;
-    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error>;
+pub trait Services: Send + Sync {
+    fn create(&self, service_type: ServiceType, name: &str) -> impl Future<Output = Result<i32, sqlx::Error>> + Send;
+    fn get_id(&self, service: &Service) -> impl Future<Output = Result<Option<i32>, sqlx::Error>> + Send;
 }
 
 pub struct ServicesPostgres {
@@ -33,7 +31,6 @@ impl ServicesPostgres {
     }
 }
 
-#[async_trait]
 impl Services for ServicesPostgres {
     #[tracing::instrument(skip(self), fields(service_type = ?service_type, name = %name))]
     async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
@@ -52,7 +49,7 @@ impl Services for ServicesPostgres {
             self.id_cache
                 .read().await
                 .get(&service.clone().into())
-                .map(|v| *v)
+                .copied()
         };
         let id = if cached_id.is_none() {
             tracing::debug!("Cache miss - fetching service ID from database");

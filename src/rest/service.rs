@@ -8,40 +8,57 @@ use axum::http::StatusCode;
 use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus};
 use crate::dto::error::CodeStringLengthError;
 use crate::repo;
-use crate::repo::users::{UpdateTarget, UserId};
+use crate::repo::users::{UpdateTarget, UserId, Users};
+use crate::repo::services::Services;
 use crate::rest::{PremiumActivationResult, PremiumVariantRest, RegistrationRequest, RestError, Success, UserView};
 
-pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
+pub fn router<U, S>(repos: Arc<repo::Repositories<U, S>>) -> axum::Router
+where
+    U: Users + Send + Sync + 'static,
+    S: Services + Send + Sync + 'static,
+{
     axum::Router::new()
-        .route("/{id}", get(get_user))
-        .route("/external/{external_id}", get(get_external_user))
-        .route("/external", put(register_user))
-        .route("/{id}/language/{code}", post(update_language))
-        .route("/{id}/location/", post(update_location))
-        .route("/{id}/premium/activate/{variant}", post(activate_premium))
+        .route("/{id}", get(get_user::<U, S>))
+        .route("/external/{external_id}", get(get_external_user::<U, S>))
+        .route("/external", put(register_user::<U, S>))
+        .route("/{id}/language/{code}", post(update_language::<U, S>))
+        .route("/{id}/location/", post(update_location::<U, S>))
+        .route("/{id}/premium/activate/{variant}", post(activate_premium::<U, S>))
         .layer(Extension(repos))
 }
 
 #[tracing::instrument(skip(repos), fields(user_id = %id))]
-async fn get_user(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn get_user<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Path(id): Path<i64>,
-) -> Result<Json<UserView>, RouteError> {
+) -> Result<Json<UserView>, RouteError>
+where
+    U: Users,
+    S: Services,
+{
     get_user_impl(repos, UserId::Internal(id)).await
 }
 
 #[tracing::instrument(skip(repos), fields(external_id = %id))]
-async fn get_external_user(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn get_external_user<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Path(id): Path<i64>,
-) -> Result<Json<UserView>, RouteError> {
+) -> Result<Json<UserView>, RouteError>
+where
+    U: Users,
+    S: Services,
+{
     get_user_impl(repos, UserId::External(id)).await
 }
 
-async fn get_user_impl(
-    repos: Arc<repo::Repositories>,
+async fn get_user_impl<U, S>(
+    repos: Arc<repo::Repositories<U, S>>,
     id: UserId,
-) -> Result<Json<UserView>, RouteError> {
+) -> Result<Json<UserView>, RouteError>
+where
+    U: Users,
+    S: Services,
+{
     let user = repos.users.get(id)
         .await?
         .ok_or(RouteError::new_not_found())?
@@ -50,10 +67,14 @@ async fn get_user_impl(
 }
 
 #[tracing::instrument(skip(repos, req), fields(external_id = %req.user.external_id, service_type = ?req.service.service_type))]
-async fn register_user(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn register_user<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Json(req): Json<RegistrationRequest>,
-) -> Result<(StatusCode, Json<RegistrationResponse>), RouteError<RestError>> {
+) -> Result<(StatusCode, Json<RegistrationResponse>), RouteError<RestError>>
+where
+    U: Users,
+    S: Services,
+{
     let maybe_service = repos.services.get_id(&req.service).await
         .map_err(|e| {
             tracing::error!(error = %e, "Failed to get service ID");
@@ -88,10 +109,14 @@ async fn register_user(
 }
 
 #[tracing::instrument(skip(repos), fields(user_id = %id, language_code = %code))]
-async fn update_language(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn update_language<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Path((id, code)): Path<(i64, String)>,
-) -> Result<Success, RouteError<RestError>> {
+) -> Result<Success, RouteError<RestError>>
+where
+    U: Users,
+    S: Services,
+{
     let lang_code: Code = code.try_into()
         .map_err(|e: CodeStringLengthError| {
             tracing::warn!(error = %e, "Invalid language code format");
@@ -101,15 +126,23 @@ async fn update_language(
 }
 
 #[tracing::instrument(skip(repos), fields(user_id = %id, lat = %location.latitude, lon = %location.longitude))]
-async fn update_location(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn update_location<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Path(id): Path<i64>,
     Query(location): Query<Location>,
-) -> Result<Success, RouteError<RestError>> {
+) -> Result<Success, RouteError<RestError>>
+where
+    U: Users,
+    S: Services,
+{
     update_impl(repos, id, location.into()).await
 }
 
-async fn update_impl(repos: Arc<repo::Repositories>, id: i64, target: UpdateTarget) -> Result<Success, RouteError<RestError>> {
+async fn update_impl<U, S>(repos: Arc<repo::Repositories<U, S>>, id: i64, target: UpdateTarget) -> Result<Success, RouteError<RestError>>
+where
+    U: Users,
+    S: Services,
+{
     repos.users.update_value(id, target).await
         .map_err(|e| {
             tracing::error!(error = %e, "Failed to update user");
@@ -119,10 +152,14 @@ async fn update_impl(repos: Arc<repo::Repositories>, id: i64, target: UpdateTarg
 }
 
 #[tracing::instrument(skip(repos), fields(user_id = %id, variant = %till))]
-async fn activate_premium(
-    Extension(repos): Extension<Arc<repo::Repositories>>,
+async fn activate_premium<U, S>(
+    Extension(repos): Extension<Arc<repo::Repositories<U, S>>>,
     Path((id, till)): Path<(i64, String)>,
-) -> Result<Json<PremiumActivationResult>, RouteError<RestError>> {
+) -> Result<Json<PremiumActivationResult>, RouteError<RestError>>
+where
+    U: Users,
+    S: Services,
+{
     let variant = PremiumVariantRest::from_str(&till)
         .map_err(|e| {
             tracing::warn!(error = %e, "Invalid premium variant");

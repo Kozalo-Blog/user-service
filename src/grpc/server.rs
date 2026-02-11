@@ -1,22 +1,39 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 use autometrics::autometrics;
-use derive_more::Constructor;
 use tonic::{Request, Response, Status};
 use crate::grpc::generated::user_service_server::UserService;
 use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
 use crate::dto::RegistrationStatus;
 use crate::{dto, repo};
-use crate::repo::users::UserId;
+use crate::repo::users::{UserId, Users};
+use crate::repo::services::Services;
 use crate::grpc::error::{IntoStatusExt, IntoStatusOptionExt};
 
-#[derive(Constructor)]
-pub struct GrpcServer {
-    repos: Arc<repo::Repositories>
+pub struct GrpcServer<U, S>
+where
+    U: Users,
+    S: Services,
+{
+    repos: Arc<repo::Repositories<U, S>>
+}
+
+impl<U, S> GrpcServer<U, S>
+where
+    U: Users,
+    S: Services,
+{
+    pub fn new(repos: Arc<repo::Repositories<U, S>>) -> Self {
+        Self { repos }
+    }
 }
 
 #[tonic::async_trait]
-impl UserService for GrpcServer {
+impl<U, S> UserService for GrpcServer<U, S>
+where
+    U: Users + Send + Sync + 'static,
+    S: Services + Send + Sync + 'static,
+{
     #[autometrics]
     #[tracing::instrument(skip(self, request), fields(user_id = %request.get_ref().id, by_external_id = %request.get_ref().by_external_id))]
     async fn get(&self, request: Request<GetUserRequest>) -> Result<Response<User>, Status> {

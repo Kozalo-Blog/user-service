@@ -9,9 +9,10 @@ use http_body_util::BodyExt;
 use serde_json::json;
 use tower::ServiceExt;
 use crate::dto::{Code, ExternalUser, SavedUser, Service, ServiceType};
-use crate::repo::test::mocks::{mock_repositories, ServicesMock, CtorWithData, UsersMock, ExternalId};
+use crate::repo::test::mocks::{mock_repositories, ServicesMock, CtorWithData, UsersMock, ExternalId, MockRepositories};
 use crate::{repo, rest};
-use crate::repo::users::UserId;
+use crate::repo::users::{UserId, Users};
+use crate::repo::services::Services;
 
 struct UserServiceClient {
     router: axum::Router,
@@ -24,7 +25,11 @@ impl Default for UserServiceClient {
 }
 
 impl UserServiceClient {
-    fn new(repos: repo::Repositories) -> Self {
+    fn new<U, S>(repos: repo::Repositories<U, S>) -> Self
+    where
+        U: Users + Send + Sync + 'static,
+        S: Services + Send + Sync + 'static,
+    {
         Self {
             router: rest::router(Arc::new(repos)),
         }
@@ -234,7 +239,7 @@ async fn ensure_success<T>(response: http::Response<T>) -> anyhow::Result<()>
     Ok(())
 }
 
-fn build_repos_with_test_user() -> repo::Repositories {
+fn build_repos_with_test_user() -> MockRepositories {
     let usr = build_external_user();
     let external_id = usr.external_id as ExternalId;
     let usr = SavedUser {
@@ -247,10 +252,7 @@ fn build_repos_with_test_user() -> repo::Repositories {
 
     let services = ServicesMock::with_data(HashMap::from([(1, build_service())]));
     let users = UsersMock::with_data(HashMap::from([(external_id, usr)]));
-    repo::Repositories {
-        services: Box::new(services),
-        users: Box::new(users),
-    }
+    repo::Repositories::new(users, services)
 }
 
 fn build_external_user() -> ExternalUser {

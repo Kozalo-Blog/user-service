@@ -7,9 +7,6 @@ pub trait IntoStatusExt<T> {
 
     /// Convert error into Status::invalid_argument with warn-level logging
     fn into_invalid_argument(self) -> Result<T, Status>;
-
-    /// Convert error into Status::not_found with warn-level logging
-    fn into_not_found(self) -> Result<T, Status>;
 }
 
 impl<T, E: std::fmt::Display> IntoStatusExt<T> for Result<T, E> {
@@ -24,13 +21,6 @@ impl<T, E: std::fmt::Display> IntoStatusExt<T> for Result<T, E> {
         self.map_err(|e| {
             tracing::warn!(error = %e, "Invalid argument");
             Status::invalid_argument(e.to_string())
-        })
-    }
-
-    fn into_not_found(self) -> Result<T, Status> {
-        self.map_err(|e| {
-            tracing::warn!(error = %e, "Resource not found");
-            Status::not_found(e.to_string())
         })
     }
 }

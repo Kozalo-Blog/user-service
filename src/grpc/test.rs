@@ -14,6 +14,8 @@ use crate::grpc::generated::user_service_server::UserServiceServer;
 use crate::grpc::server::GrpcServer;
 use crate::repo;
 use crate::repo::test::mocks::mock_repositories;
+use crate::repo::users::Users;
+use crate::repo::services::Services;
 
 #[tokio::test]
 async fn test_all() -> anyhow::Result<()> {
@@ -47,7 +49,7 @@ async fn test_all() -> anyhow::Result<()> {
     test_registration(&mut client, registration_req, RegistrationStatus::AlreadyPresent).await?;
 
     let user = client.get(get_req_by_internal_id.clone()).await?.into_inner();
-    assert_eq!(user.is_premium, false);
+    assert!(!user.is_premium);
     let opts = user.options.unwrap();
     assert_eq!(opts.language_code, None);
     assert_eq!(opts.location, None);
@@ -78,7 +80,7 @@ async fn test_all() -> anyhow::Result<()> {
     let user = client.get(get_req_by_internal_id).await?.into_inner();
     assert_eq!(user.id, 1);
     assert_eq!(user.name, Some(username));
-    assert_eq!(user.is_premium, true);
+    assert!(user.is_premium);
     let opts = &user.options.unwrap();
     assert_eq!(opts.language_code, Some(lang));
     assert_eq!(opts.location, Some(Location { latitude, longitude }));
@@ -106,7 +108,11 @@ async fn invalid_arguments() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn start_test_server(repos: repo::Repositories) -> anyhow::Result<SocketAddr> {
+async fn start_test_server<U, S>(repos: repo::Repositories<U, S>) -> anyhow::Result<SocketAddr>
+where
+    U: Users + Send + Sync + 'static,
+    S: Services + Send + Sync + 'static,
+{
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
 
