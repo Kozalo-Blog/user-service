@@ -22,7 +22,7 @@ pub async fn start_postgres() -> (ContainerAsync<GenericImage>, Pool<Postgres>) 
         .with_env_var("POSTGRES_PASSWORD", POSTGRES_PASSWORD)
         .with_env_var("POSTGRES_DB", POSTGRES_DB)
         .with_ready_conditions(vec![
-            WaitFor::message_on_stdout("PostgreSQL init process complete; ready for start up.")
+            WaitFor::message_on_stderr("database system is ready to accept connections")
         ]);
 
     let postgres_container = postgres_image.start().await.expect("failed to start postgres container");
