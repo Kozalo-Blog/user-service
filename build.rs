@@ -5,6 +5,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .type_attribute(".", "#[cfg_attr(feature = \"serde\", derive(serde::Serialize, serde::Deserialize))]")
         .extern_path(".google.protobuf.Struct", "::prost_wkt_types::Struct")
-        .compile(&[proto_root_file], &[proto_root_dir])?;
+        .compile_protos(&[proto_root_file], &[proto_root_dir])?;
     Ok(())
 }

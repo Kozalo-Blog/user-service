@@ -13,12 +13,12 @@ use crate::rest::{PremiumActivationResult, PremiumVariantRest, RegistrationReque
 
 pub fn router(repos: Arc<repo::Repositories>) -> axum::Router {
     axum::Router::new()
-        .route("/:id", get(get_user))
-        .route("/external/:external_id", get(get_external_user))
+        .route("/{id}", get(get_user))
+        .route("/external/{external_id}", get(get_external_user))
         .route("/external", put(register_user))
-        .route("/:id/language/:code", post(update_language))
-        .route("/:id/location/", post(update_location))
-        .route("/:id/premium/activate/:variant", post(activate_premium))
+        .route("/{id}/language/{code}", post(update_language))
+        .route("/{id}/location/", post(update_location))
+        .route("/{id}/premium/activate/{variant}", post(activate_premium))
         .layer(Extension(repos))
 }
 

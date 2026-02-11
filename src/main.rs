@@ -1,3 +1,6 @@
+// Suppress warnings from generated protobuf code about serde feature
+#![allow(unexpected_cfgs)]
+
 mod repo;
 mod dto;
 mod grpc;
