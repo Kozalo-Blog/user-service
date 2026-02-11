@@ -8,12 +8,13 @@ edition = "2021"
 [dependencies]
 pretty_env_logger = "0.5.0"
 axum = "0.8.1"
-axum-prometheus = "0.7.0"
+axum-prometheus = "0.10.0"
 axum-route-error = "5.1.0"
-tonic = "0.12.3"
-prost = "0.13.4"
-prost-types = "0.13.4"
-prost-wkt-types = "0.6.0"
+tonic = "0.14.3"
+tonic-prost = "0.14.3"
+prost = "0.14.3"
+prost-types = "0.14.3"
+prost-wkt-types = "0.7.1"
 tokio = { version = "1.42.0", features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { version = "0.1.17", features = ["net"] }
 serde = { version = "1.0.217", features = ["derive"] }
@@ -25,22 +26,22 @@ chrono = { version = "0.4.39", features = [ "serde" ] }
 url = "2.5.4"
 anyhow = "1.0.101"
 log = "0.4.22"
-prometheus = "0.13.4"
-derive_more = { version = "1.0.0", features = ["display", "constructor", "from", "error", "from_str"] }
-thiserror = "1.0.69"
+prometheus = "0.14.0"
+derive_more = { version = "2.1.1", features = ["display", "constructor", "from", "error", "from_str"] }
+thiserror = "2.0.18"
 async-trait = "0.1.83"
-autometrics = { version = "1.0.1", features = ["prometheus-exporter"] }
+autometrics = { version = "3.0.0", features = ["prometheus-exporter"] }
 num-traits = "0.2.19"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json"] }
-tracing-opentelemetry = "0.27.0"
-opentelemetry = "0.26.0"
-opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic"] }
-axum-tracing-opentelemetry = "0.21.1"
+tracing-opentelemetry = "0.32.1"
+opentelemetry = "0.31.0"
+opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31.0", features = ["grpc-tonic"] }
+axum-tracing-opentelemetry = "0.33.0"
 
 [dev-dependencies]
-testcontainers = "0.15.0"
+testcontainers = "0.27.0"
 http = "1.2.0"
 http-body-util = "0.1.2"
 mime = "0.3.17"
@@ -48,4 +49,6 @@ tower = "0.5.2"
 tokio-stream = { version = "0.1.17", features = ["net"] }
 
 [build-dependencies]
-tonic-build = "0.12.3"
+tonic-build = "0.14.3"
+tonic-prost-build = "0.14.3"
+prost-build = "0.14.3"

@@ -1,7 +1,6 @@
 use chrono::{Months, Timelike, Utc};
 use serde_json::json;
 use sqlx::{Pool, Postgres};
-use testcontainers::clients;
 use tokio::join;
 use crate::dto::{Code, ExternalUser, PremiumVariant, ServiceType};
 use crate::repo;
@@ -16,8 +15,7 @@ const TEST_SERVICE: &str = "SadBot";
 
 #[tokio::test]
 async fn test_users() -> anyhow::Result<()> {
-    let docker = clients::Cli::default();
-    let (_container, db) = start_postgres(&docker).await;
+    let (_container, db) = start_postgres().await;
 
     let users = repo::UsersPostgres::new(db.clone());
     let external_id = UserId::External(TEST_UID_EXT);

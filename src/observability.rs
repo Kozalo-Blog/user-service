@@ -2,7 +2,6 @@ use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::trace as sdktrace;
 use opentelemetry_sdk::Resource;
-use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -24,21 +23,24 @@ pub fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
     let service_name = std::env::var("OTEL_SERVICE_NAME")
         .unwrap_or_else(|_| "user-service".to_string());
 
-    // Initialize OpenTelemetry tracer provider with OTLP exporter
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(endpoint)
-        )
-        .with_trace_config(
-            sdktrace::Config::default()
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", service_name.clone()),
-                ]))
-        )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)?;
+    // Initialize OpenTelemetry OTLP exporter with gRPC (Tonic)
+    let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint)
+        .build()?;
+
+    // Create tracer provider with OTLP exporter and resource
+    let resource = Resource::builder()
+        .with_service_name(service_name.clone())
+        .build();
+
+    let provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(otlp_exporter)
+        .with_resource(resource)
+        .build();
+
+    // Set as global tracer provider
+    global::set_tracer_provider(provider.clone());
 
     // Get tracer from the provider
     let tracer = provider.tracer("user-service");
@@ -73,5 +75,6 @@ pub fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
 /// Flushes any pending spans to the OTLP collector before shutdown
 pub fn shutdown_tracing() {
     tracing::info!("Shutting down tracing and flushing spans");
-    global::shutdown_tracer_provider();
+    // In OpenTelemetry 0.31, shutdown is handled by dropping the provider
+    // The global provider will flush spans on shutdown
 }

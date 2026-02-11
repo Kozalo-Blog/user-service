@@ -1,4 +1,3 @@
-use testcontainers::clients;
 use crate::dto::{Service, ServiceType};
 use crate::repo;
 use crate::repo::services::Services;
@@ -8,8 +7,7 @@ const TEST_NAME: &str = "SadBot";
 
 #[tokio::test]
 async fn test_services() -> anyhow::Result<()> {
-    let docker = clients::Cli::default();
-    let (_container, db) = start_postgres(&docker).await;
+    let (_container, db) = start_postgres().await;
     let services = repo::ServicesPostgres::new(db);
 
     let service = Service {
