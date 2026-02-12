@@ -7,6 +7,7 @@ pub mod test;
 
 use std::str::FromStr;
 use anyhow::anyhow;
+use derive_more::Constructor;
 use url::Url;
 use crate::repo::services::{Services, ServicesPostgres};
 use crate::repo::users::{Users, UsersPostgres};
@@ -26,6 +27,7 @@ impl DatabaseConfig {
     }
 }
 
+#[cfg_attr(test, derive(Constructor))]
 pub struct Repositories<U, S>
 where
     U: Users,
@@ -33,17 +35,6 @@ where
 {
     pub users: U,
     pub services: S,
-}
-
-#[cfg(test)]
-impl<U, S> Repositories<U, S>
-where
-    U: Users,
-    S: Services,
-{
-    pub fn new(users: U, services: S) -> Self {
-        Self { users, services }
-    }
 }
 
 pub type ProdRepositories = Repositories<UsersPostgres, ServicesPostgres>;

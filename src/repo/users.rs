@@ -21,12 +21,12 @@ impl TryFrom<UserInternal> for SavedUser {
         let language_code = value.language_code
             .map(|code| code.try_into())
             .transpose()
-            .map_err(|e| TypeConversionError::new(e))?;
+            .map_err(TypeConversionError::new)?;
 
         let location = value.location
             .map(|loc| loc.try_into())
             .transpose()
-            .map_err(|e| TypeConversionError::new(e))?;
+            .map_err(TypeConversionError::new)?;
 
         Ok(Self {
             id: value.id,
@@ -154,14 +154,8 @@ impl Users for UsersPostgres {
     async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error> {
         tracing::debug!("Updating user value");
         let rows_affected = match target {
-            UpdateTarget::Language(ref code) => {
-                tracing::debug!(?code, "Updating language");
-                self.update_language(user_id, *code).await
-            }
-            UpdateTarget::Location { latitude, longitude } => {
-                tracing::debug!(latitude, longitude, "Updating location");
-                self.update_location(user_id, latitude, longitude).await
-            }
+            UpdateTarget::Language(code) => self.update_language(user_id, code).await,
+            UpdateTarget::Location { latitude, longitude } => self.update_location(user_id, latitude, longitude).await,
         }?.rows_affected();
 
         if rows_affected.is_zero() {
@@ -210,6 +204,7 @@ impl Users for UsersPostgres {
 
 impl UsersPostgres {
     async fn update_language(&self, user_id: i64, language: Code) -> Result<PgQueryResult, sqlx::Error> {
+        tracing::debug!(?language, "Updating language");
         let lang_code: String = language.into();
         sqlx::query!("UPDATE Users SET language_code = $2 WHERE id = $1", user_id, lang_code)
             .execute(&self.pool)
@@ -217,6 +212,7 @@ impl UsersPostgres {
     }
 
     async fn update_location(&self, user_id: i64, latitude: f64, longitude: f64) -> Result<PgQueryResult, sqlx::Error> {
+        tracing::debug!(latitude, longitude, "Updating location");
         sqlx::query!("UPDATE Users SET location = ARRAY[$2::float8, $3::float8] WHERE id = $1", user_id, latitude, longitude)
             .execute(&self.pool)
             .await
