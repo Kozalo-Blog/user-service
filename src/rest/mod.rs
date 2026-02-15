@@ -1,4 +1,5 @@
 mod dto;
+mod error;
 mod service;
 
 #[cfg(test)]

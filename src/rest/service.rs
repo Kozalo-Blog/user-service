@@ -6,7 +6,7 @@ use axum::routing::{get, post, put};
 use axum_route_error::RouteError;
 use axum::http::StatusCode;
 use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus};
-use crate::dto::error::CodeStringLengthError;
+use crate::rest::error::RestErrorExt;
 use crate::repo;
 use crate::repo::users::{UpdateTarget, UserId, Users};
 use crate::repo::services::Services;
@@ -76,20 +76,14 @@ where
     S: Services,
 {
     let maybe_service = repos.services.get_id(&req.service).await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to get service ID");
-            RouteError::new_internal_server().set_error_data(e.into())
-        })?;
+        .log_route_error("Failed to get service ID")?;
     let service_id = match maybe_service {
         Some(id) => id,
         None => repos.services.create(req.service.service_type, &req.service.name).await?
     };
 
     let user_id = repos.users.get_user_id(service_id, req.user.external_id).await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to get user ID");
-            RouteError::new_internal_server().set_error_data(e.into())
-        })?;
+        .log_route_error("Failed to get user ID")?;
     let status = match user_id {
         Some(id) => {
             tracing::info!(user_id = %id, "User already registered");
@@ -97,10 +91,7 @@ where
         }
         None => {
             let id = repos.users.register(req.user, service_id, req.consent_info).await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "Failed to register user");
-                    RouteError::new_internal_server().set_error_data(e.into())
-                })?;
+                .log_route_error("Failed to register user")?;
             tracing::info!(user_id = %id, "User registered successfully");
             (StatusCode::CREATED, RegistrationStatus::Created.with_id(id))
         }
@@ -118,10 +109,7 @@ where
     S: Services,
 {
     let lang_code: Code = code.try_into()
-        .map_err(|e: CodeStringLengthError| {
-            tracing::warn!(error = %e, "Invalid language code format");
-            RouteError::new_bad_request().set_error_data(e.into())
-        })?;
+        .log_route_warn("Invalid language code format")?;
     update_impl(repos, id, lang_code.into()).await
 }
 
@@ -144,10 +132,7 @@ where
     S: Services,
 {
     repos.users.update_value(id, target).await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to update user");
-            RouteError::new_internal_server().set_error_data(e.into())
-        })?;
+        .log_route_error("Failed to update user")?;
     Ok(Success)
 }
 
@@ -161,15 +146,9 @@ where
     S: Services,
 {
     let variant = PremiumVariantRest::from_str(&till)
-        .map_err(|e| {
-            tracing::warn!(error = %e, "Invalid premium variant");
-            RouteError::new_bad_request().set_error_data(e.into())
-        })?;
+        .log_route_warn("Invalid premium variant")?;
     let activation_result = repos.users.activate_premium(id, variant.into()).await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to activate premium");
-            RouteError::new_internal_server().set_error_data(e.into())
-        })?;
+        .log_route_error("Failed to activate premium")?;
     tracing::info!(?activation_result, "Premium activation completed");
     Ok(Json(PremiumActivationResult::from(activation_result)))
 }

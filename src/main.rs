@@ -1,8 +1,6 @@
-// Suppress warnings from generated protobuf code about serde feature
-#![allow(unexpected_cfgs)]
-
 mod repo;
 mod dto;
+mod env;
 mod grpc;
 mod rest;
 mod observability;
@@ -10,8 +8,10 @@ mod observability;
 use std::sync::Arc;
 use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
+use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 use prometheus::{Encoder, TextEncoder};
 use tokio::join;
+use tokio::net::TcpListener;
 use tonic::transport::Server;
 use crate::grpc::generated::user_service_server::UserServiceServer;
 use crate::grpc::server::GrpcServer;
@@ -24,9 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
     #[cfg(debug_assertions)] dotenvy::dotenv()?;
 
-    // Initialize distributed tracing
     observability::init_tracing()?;
-
     autometrics::prometheus_exporter::init();
 
     let db_config = repo::DatabaseConfig::from_env()?;
@@ -42,10 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let (rest_res, grpc_res) = join!(rest_srv_handle, grpc_srv_handle);
-    (rest_res??, grpc_res??);
-
-    // Shutdown tracing provider gracefully
-    observability::shutdown_tracing();
+    rest_res??; grpc_res??;
 
     Ok(())
 }
@@ -67,9 +62,9 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
             metric_handle.render() + &auto_metrics + &custom_metrics
         }))
         .layer(prometheus_layer)
-        .layer(axum_tracing_opentelemetry::middleware::OtelAxumLayer::default());
+        .layer(OtelAxumLayer::default());
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
+    let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

@@ -142,9 +142,6 @@ Tracing is configured via environment variables in `.env` or `.env.example`:
 # OpenTelemetry OTLP endpoint (default: http://localhost:4317)
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
-# Service name for trace identification (default: user-service)
-OTEL_SERVICE_NAME=user-service
-
 # Log level filtering (default: info,user_service=debug)
 RUST_LOG=info,user_service=debug
 ```
@@ -191,7 +188,6 @@ RUST_LOG=info,user_service=debug
 2. **Configure environment:**
    ```bash
    export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-   export OTEL_SERVICE_NAME=user-service
    export RUST_LOG=debug
    ```
 
