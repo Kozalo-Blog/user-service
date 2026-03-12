@@ -21,7 +21,6 @@ const TONIC_PORT: u16 = 8090;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    pretty_env_logger::init();
     #[cfg(debug_assertions)] dotenvy::dotenv()?;
 
     observability::init_tracing()?;
