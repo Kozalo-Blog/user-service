@@ -23,7 +23,7 @@ const TONIC_PORT: u16 = 8090;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)] dotenvy::dotenv()?;
 
-    observability::init_tracing()?;
+    let tracer_provider = observability::init_tracing()?;
     autometrics::prometheus_exporter::init();
 
     let db_config = repo::DatabaseConfig::from_env()?;
@@ -41,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (rest_res, grpc_res) = join!(rest_srv_handle, grpc_srv_handle);
     rest_res??; grpc_res??;
 
+    tracer_provider.shutdown()?;
     Ok(())
 }
 
@@ -51,12 +52,15 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
     let app = axum::Router::new()
         .nest("/api/rest/v1/user", rest::router(repos))
         .route("/metrics", get(|| async move {
-            let auto_metrics = autometrics::prometheus_exporter::encode_to_string().unwrap();
+            let auto_metrics = autometrics::prometheus_exporter::encode_to_string()
+                .expect("failed to encode autometrics");
 
             let mut buffer = vec![];
             let metrics = prometheus.gather();
-            TextEncoder::new().encode(&metrics, &mut buffer).unwrap();
-            let custom_metrics = String::from_utf8(buffer).unwrap();
+            TextEncoder::new().encode(&metrics, &mut buffer)
+                .expect("failed to encode prometheus metrics");
+            let custom_metrics = String::from_utf8(buffer)
+                .expect("prometheus metrics must be valid UTF-8");
 
             metric_handle.render() + &auto_metrics + &custom_metrics
         }))
@@ -71,11 +75,6 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
 }
 
 async fn run_grpc_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
-    // Note: gRPC trace context propagation happens automatically through the global
-    // tracing subscriber with OpenTelemetry layer configured in observability::init_tracing().
-    // The tonic-tracing-opentelemetry crate provides extensions for automatic span creation,
-    // but explicit middleware is not needed - spans are created by our #[tracing::instrument] attributes.
-
     Server::builder()
         .add_service(UserServiceServer::new(GrpcServer::new(repos)))
         .serve_with_shutdown(([0,0,0,0], TONIC_PORT).into(), shutdown_signal())
@@ -87,5 +86,5 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("failed to install CTRL+C signal handler");
-    log::info!("Shutdown of the servers…");
+    tracing::info!("Shutdown of the servers…");
 }

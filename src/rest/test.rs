@@ -113,7 +113,7 @@ impl UserServiceClient {
 
 #[tokio::test]
 async fn test_get_and_create() -> anyhow::Result<()> {
-    pretty_env_logger::init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
     let client = UserServiceClient::default();
     let external_user = ExternalUser {
@@ -125,13 +125,13 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         service_type: ServiceType::TelegramBot,
     };
 
-    log::info!("ensure nobody is in the database");
+    tracing::info!("ensure nobody is in the database");
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let response = client.get_user(UserId::External(external_user.external_id)).await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    log::info!("create the first user");
+    tracing::info!("create the first user");
     let response = client.create_user(&external_user, &service).await?;
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = to_json_value(response).await?;
@@ -140,7 +140,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         "id": 1
     }));
 
-    log::info!("try to create the same user again");
+    tracing::info!("try to create the same user again");
     let response = client.create_user(&external_user, &service).await?;
     assert_eq!(response.status(), StatusCode::FOUND);
     let body = to_json_value(response).await?;
@@ -149,7 +149,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         "id": 1
     }));
 
-    log::info!("test the output of the GET method");
+    tracing::info!("test the output of the GET method");
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::OK);
     let response = client.get_user(UserId::External(external_user.external_id)).await?;

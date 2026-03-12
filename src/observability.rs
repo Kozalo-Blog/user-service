@@ -18,7 +18,7 @@ const SERVICE_NAME: &str = env!("CARGO_PKG_NAME");
 ///
 /// Configuration via environment variables:
 /// - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (default: http://localhost:4317)
-pub fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     let endpoint = get_value_or_default(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "http://localhost:4317".to_string(),
@@ -61,5 +61,5 @@ pub fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
         service_name = %SERVICE_NAME,
         "Tracing initialized successfully with OpenTelemetry OTLP export"
     );
-    Ok(())
+    Ok(provider)
 }

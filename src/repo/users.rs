@@ -44,6 +44,15 @@ pub enum UserId {
     External(i64),
 }
 
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserId::Internal(id) => write!(f, "internal:{id}"),
+            UserId::External(id) => write!(f, "external:{id}"),
+        }
+    }
+}
+
 #[derive(Debug, From)]
 pub enum UpdateTarget {
     Language(Code),
@@ -71,7 +80,7 @@ pub struct UsersPostgres {
 }
 
 impl Users for UsersPostgres {
-    #[tracing::instrument(skip(self), fields(user_id = match id { UserId::Internal(id) => format!("internal:{}", id), UserId::External(id) => format!("external:{}", id) }))]
+    #[tracing::instrument(skip(self), fields(user_id = %id))]
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>> {
         let result = match id {
             UserId::Internal(id) => {
