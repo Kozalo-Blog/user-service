@@ -9,9 +9,10 @@ use http_body_util::BodyExt;
 use serde_json::json;
 use tower::ServiceExt;
 use crate::dto::{Code, ExternalUser, SavedUser, Service, ServiceType};
-use crate::repo::test::mocks::{mock_repositories, ServicesMock, CtorWithData, UsersMock, ExternalId};
+use crate::repo::test::mocks::{mock_repositories, ServicesMock, CtorWithData, UsersMock, ExternalId, MockRepositories};
 use crate::{repo, rest};
-use crate::repo::users::UserId;
+use crate::repo::users::{UserId, Users};
+use crate::repo::services::Services;
 
 struct UserServiceClient {
     router: axum::Router,
@@ -24,7 +25,11 @@ impl Default for UserServiceClient {
 }
 
 impl UserServiceClient {
-    fn new(repos: repo::Repositories) -> Self {
+    fn new<U, S>(repos: repo::Repositories<U, S>) -> Self
+    where
+        U: Users + Send + Sync + 'static,
+        S: Services + Send + Sync + 'static,
+    {
         Self {
             router: rest::router(Arc::new(repos)),
         }
@@ -108,7 +113,7 @@ impl UserServiceClient {
 
 #[tokio::test]
 async fn test_get_and_create() -> anyhow::Result<()> {
-    pretty_env_logger::init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
     let client = UserServiceClient::default();
     let external_user = ExternalUser {
@@ -120,13 +125,13 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         service_type: ServiceType::TelegramBot,
     };
 
-    log::info!("ensure nobody is in the database");
+    tracing::info!("ensure nobody is in the database");
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let response = client.get_user(UserId::External(external_user.external_id)).await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    log::info!("create the first user");
+    tracing::info!("create the first user");
     let response = client.create_user(&external_user, &service).await?;
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = to_json_value(response).await?;
@@ -135,7 +140,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         "id": 1
     }));
 
-    log::info!("try to create the same user again");
+    tracing::info!("try to create the same user again");
     let response = client.create_user(&external_user, &service).await?;
     assert_eq!(response.status(), StatusCode::FOUND);
     let body = to_json_value(response).await?;
@@ -144,7 +149,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
         "id": 1
     }));
 
-    log::info!("test the output of the GET method");
+    tracing::info!("test the output of the GET method");
     let response = client.get_user(UserId::Internal(1)).await?;
     assert_eq!(response.status(), StatusCode::OK);
     let response = client.get_user(UserId::External(external_user.external_id)).await?;
@@ -234,7 +239,7 @@ async fn ensure_success<T>(response: http::Response<T>) -> anyhow::Result<()>
     Ok(())
 }
 
-fn build_repos_with_test_user() -> repo::Repositories {
+fn build_repos_with_test_user() -> MockRepositories {
     let usr = build_external_user();
     let external_id = usr.external_id as ExternalId;
     let usr = SavedUser {
@@ -247,10 +252,7 @@ fn build_repos_with_test_user() -> repo::Repositories {
 
     let services = ServicesMock::with_data(HashMap::from([(1, build_service())]));
     let users = UsersMock::with_data(HashMap::from([(external_id, usr)]));
-    repo::Repositories {
-        services: Box::new(services),
-        users: Box::new(users),
-    }
+    repo::Repositories::new(users, services)
 }
 
 fn build_external_user() -> ExternalUser {

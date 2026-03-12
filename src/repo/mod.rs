@@ -5,9 +5,8 @@ pub mod error;
 #[cfg(test)]
 pub mod test;
 
-use std::str::FromStr;
-use anyhow::anyhow;
 use url::Url;
+use crate::env::{get_mandatory_value, get_value_or_default};
 use crate::repo::services::{Services, ServicesPostgres};
 use crate::repo::users::{Users, UsersPostgres};
 
@@ -26,16 +25,23 @@ impl DatabaseConfig {
     }
 }
 
-pub struct Repositories {
-    pub users: Box<dyn Users + Sync + Send + 'static>,
-    pub services: Box<dyn Services + Sync + Send + 'static>,
+#[cfg_attr(test, derive(derive_more::Constructor))]
+pub struct Repositories<U, S>
+where
+    U: Users,
+    S: Services,
+{
+    pub users: U,
+    pub services: S,
 }
 
-impl Repositories {
-    pub fn new(db: sqlx::Pool<sqlx::Postgres>) -> Self {
+pub type ProdRepositories = Repositories<UsersPostgres, ServicesPostgres>;
+
+impl ProdRepositories {
+    pub fn from_db(db: sqlx::Pool<sqlx::Postgres>) -> Self {
         Self {
-            users: Box::new(UsersPostgres::new(db.clone())),
-            services: Box::new(ServicesPostgres::new(db.clone())),
+            users: UsersPostgres::new(db.clone()),
+            services: ServicesPostgres::new(db),
         }
     }
 }
@@ -46,32 +52,4 @@ pub async fn establish_database_connection(config: &DatabaseConfig) -> Result<sq
         .connect(config.url.as_str()).await?;
     sqlx::migrate!().run(&pool).await?;
     Ok(pool)
-}
-
-fn get_mandatory_value<T, E>(key: &str) -> anyhow::Result<T>
-    where
-        T: FromStr<Err = E>,
-        E: std::error::Error + Send + Sync + 'static
-{
-    std::env::var(key)?
-        .parse()
-        .map_err(|e: E| anyhow!(e))
-}
-
-fn get_value_or_default<T, E>(key: &str, default: T) -> T
-    where
-        T: FromStr<Err = E> + std::fmt::Display,
-        E: std::error::Error + Send + Sync + 'static
-{
-    std::env::var(key)
-        .map_err(|e| {
-            log::warn!("no value was found for an optional environment variable {key}, using the default value {default}");
-            anyhow!(e)
-        })
-        .and_then(|v| v.parse()
-            .map_err(|e: E| {
-                log::warn!("invalid value of the {key} environment variable, using the default value {default}");
-                anyhow!(e)
-            }))
-        .unwrap_or(default)
 }

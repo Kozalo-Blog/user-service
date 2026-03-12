@@ -12,7 +12,7 @@ pub enum ServiceType {
     Application,
 }
 
-#[derive(Serialize, Deserialize, Clone, From, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, From, PartialEq, Eq)]
 pub struct Service {
     pub name: String,
 

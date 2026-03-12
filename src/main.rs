@@ -1,13 +1,17 @@
 mod repo;
 mod dto;
+mod env;
 mod grpc;
 mod rest;
+mod observability;
 
 use std::sync::Arc;
 use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
+use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 use prometheus::{Encoder, TextEncoder};
 use tokio::join;
+use tokio::net::TcpListener;
 use tonic::transport::Server;
 use crate::grpc::generated::user_service_server::UserServiceServer;
 use crate::grpc::server::GrpcServer;
@@ -17,13 +21,14 @@ const TONIC_PORT: u16 = 8090;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    pretty_env_logger::init();
     #[cfg(debug_assertions)] dotenvy::dotenv()?;
+
+    let tracer_provider = observability::init_tracing()?;
     autometrics::prometheus_exporter::init();
 
     let db_config = repo::DatabaseConfig::from_env()?;
     let db = repo::establish_database_connection(&db_config).await?;
-    let rest_repos = Arc::new(repo::Repositories::new(db));
+    let rest_repos = Arc::new(repo::ProdRepositories::from_db(db));
     let grpc_repos = rest_repos.clone();
 
     let rest_srv_handle = tokio::spawn(async move {
@@ -34,36 +39,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let (rest_res, grpc_res) = join!(rest_srv_handle, grpc_srv_handle);
-    (rest_res??, grpc_res??);
+    rest_res??; grpc_res??;
+
+    tracer_provider.shutdown()?;
     Ok(())
 }
 
-async fn run_rest_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
+async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
     let prometheus = prometheus::Registry::new();
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
     let app = axum::Router::new()
         .nest("/api/rest/v1/user", rest::router(repos))
         .route("/metrics", get(|| async move {
-            let auto_metrics = autometrics::prometheus_exporter::encode_to_string().unwrap();
+            let auto_metrics = autometrics::prometheus_exporter::encode_to_string()
+                .expect("failed to encode autometrics");
 
             let mut buffer = vec![];
             let metrics = prometheus.gather();
-            TextEncoder::new().encode(&metrics, &mut buffer).unwrap();
-            let custom_metrics = String::from_utf8(buffer).unwrap();
+            TextEncoder::new().encode(&metrics, &mut buffer)
+                .expect("failed to encode prometheus metrics");
+            let custom_metrics = String::from_utf8(buffer)
+                .expect("prometheus metrics must be valid UTF-8");
 
             metric_handle.render() + &auto_metrics + &custom_metrics
         }))
-        .layer(prometheus_layer);
+        .layer(prometheus_layer)
+        .layer(OtelAxumLayer::default());
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
+    let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
 }
 
-async fn run_grpc_server(repos: Arc<repo::Repositories>) -> anyhow::Result<()> {
+async fn run_grpc_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
     Server::builder()
         .add_service(UserServiceServer::new(GrpcServer::new(repos)))
         .serve_with_shutdown(([0,0,0,0], TONIC_PORT).into(), shutdown_signal())
@@ -75,5 +86,5 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("failed to install CTRL+C signal handler");
-    log::info!("Shutdown of the servers…");
+    tracing::info!("Shutdown of the servers…");
 }

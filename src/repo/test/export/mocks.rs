@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use axum::async_trait;
 use chrono::{DateTime, Utc};
 use num_traits::PrimInt;
 use tokio::sync::Mutex;
@@ -52,10 +51,9 @@ macro_rules! create_mock_struct {
 create_mock_struct!(ServicesMock, i32, i32, Service, services);
 create_mock_struct!(UsersMock, i64, ExternalId, SavedUser, users);
 
-#[async_trait]
 impl Services for ServicesMock {
     async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
-        log::info!("ServiceMock:create: {name} ({service_type:?})");
+        tracing::info!("ServiceMock:create: {name} ({service_type:?})");
         let id = self.gen_id().await;
         let service = (name.to_string(), service_type).into();
         self.services.lock().await
@@ -77,14 +75,13 @@ impl Services for ServicesMock {
 
 pub type ExternalId = i64;
 
-#[async_trait]
 impl Users for UsersMock {
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>> {
         let users = self.users.lock().await;
         match id {
-            UserId::Internal(internal_id) => users.iter()
-                .map(|(_, usr)| usr.clone())
-                .filter(|usr| usr.id == internal_id)
+            UserId::Internal(internal_id) => users.values()
+                .filter(|&usr| usr.id == internal_id)
+                .cloned()
                 .map(Ok)
                 .take(1)
                 .next()
@@ -96,7 +93,7 @@ impl Users for UsersMock {
     }
 
     async fn register(&self, user: ExternalUser, service_id: i32, _: serde_json::Value) -> Result<i64, sqlx::Error> {
-        log::info!("UsersMock:register: {user:?} (service_id = {service_id})");
+        tracing::info!("UsersMock:register: {user:?} (service_id = {service_id})");
         let id = self.gen_id().await;
         let saved_user = SavedUser {
             id,
@@ -121,7 +118,7 @@ impl Users for UsersMock {
     }
 
     async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error> {
-        log::info!("UsersMock:update_value for {user_id} - {target:?}");
+        tracing::info!("UsersMock:update_value for {user_id} - {target:?}");
         self.modify_user(user_id, |user| {
             match target {
                 UpdateTarget::Language(code) => { user.language_code.replace(code); },
@@ -131,7 +128,7 @@ impl Users for UsersMock {
     }
 
     async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
-        log::info!("UsersMock:activate_premium for {user_id} for {}", variant as u32);
+        tracing::info!("UsersMock:activate_premium for {user_id} for {}", variant as u32);
         let premium_active = self.find_user(user_id).await?
             .premium_till.is_some();
         if premium_active {
@@ -160,7 +157,8 @@ impl UsersMock {
         let mut users = self.users.lock().await;
         let user= users.get_mut(&external_id)
             .expect("user must be in the HashMap here!");
-        Ok(action(user))
+        action(user);
+        Ok(())
     }
 
     async fn find_external_id(&self, id: i64) -> Result<ExternalId, sqlx::Error> {
@@ -173,9 +171,11 @@ impl UsersMock {
     }
 }
 
-pub fn mock_repositories() -> Repositories {
-    Repositories {
-        services: Box::new(ServicesMock::default()),
-        users: Box::new(UsersMock::default()),
-    }
+pub type MockRepositories = Repositories<UsersMock, ServicesMock>;
+
+pub fn mock_repositories() -> MockRepositories {
+    Repositories::new(
+        UsersMock::default(),
+        ServicesMock::default(),
+    )
 }
