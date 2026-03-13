@@ -51,6 +51,9 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
 
     let app = axum::Router::new()
         .nest("/api/rest/v1/user", rest::router(repos))
+        .layer(prometheus_layer)
+        .layer(OtelInResponseLayer::default())
+        .layer(OtelAxumLayer::default())
         .route("/metrics", get(|| async move {
             let auto_metrics = autometrics::prometheus_exporter::encode_to_string()
                 .expect("failed to encode autometrics");
@@ -63,10 +66,7 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
                 .expect("prometheus metrics must be valid UTF-8");
 
             metric_handle.render() + &auto_metrics + &custom_metrics
-        }))
-        .layer(prometheus_layer)
-        .layer(OtelInResponseLayer::default())
-        .layer(OtelAxumLayer::default());
+        }));
 
     let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
     axum::serve(listener, app)

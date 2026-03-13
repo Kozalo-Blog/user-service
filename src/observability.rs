@@ -45,15 +45,18 @@ pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     // Initialize the tracing subscriber with all layers
     let telemetry_layer = tracing_opentelemetry::layer()
         .with_tracer(provider.tracer(SERVICE_NAME));
-    // Per-layer filtering: EnvFilter only applies to console output,
-    // so OpenTelemetry spans (including axum-tracing-opentelemetry) are never disabled
+    // Per-layer filtering so RUST_LOG controls console verbosity
+    // without disabling OTel spans needed for trace context propagation
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
         .with_thread_ids(true)
         .with_line_number(true)
         .with_filter(EnvFilter::from_default_env());
+    let otel_filter = EnvFilter::new("info")
+        .add_directive("axum_tracing_opentelemetry=trace".parse()?)
+        .add_directive("otel=debug".parse()?);
     tracing_subscriber::registry()
-        .with(telemetry_layer)
+        .with(telemetry_layer.with_filter(otel_filter))
         .with(fmt_layer)
         .try_init()?;
 
