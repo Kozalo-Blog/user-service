@@ -8,7 +8,7 @@ mod observability;
 use std::sync::Arc;
 use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
-use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use prometheus::{Encoder, TextEncoder};
 use tokio::join;
 use tokio::net::TcpListener;
@@ -65,6 +65,7 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
             metric_handle.render() + &auto_metrics + &custom_metrics
         }))
         .layer(prometheus_layer)
+        .layer(OtelInResponseLayer::default())
         .layer(OtelAxumLayer::default());
 
     let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;

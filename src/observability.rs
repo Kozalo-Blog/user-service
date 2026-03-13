@@ -3,7 +3,7 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use crate::env::get_value_or_default;
 
 /// Service name from Cargo.toml
@@ -45,16 +45,16 @@ pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     // Initialize the tracing subscriber with all layers
     let telemetry_layer = tracing_opentelemetry::layer()
         .with_tracer(provider.tracer(SERVICE_NAME));
+    // Per-layer filtering: EnvFilter only applies to console output,
+    // so OpenTelemetry spans (including axum-tracing-opentelemetry) are never disabled
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_line_number(true)
+        .with_filter(EnvFilter::from_default_env());
     tracing_subscriber::registry()
-        // RUST_LOG based filter (applied to all layers below)
-        .with(EnvFilter::from_default_env())
-        // OpenTelemetry layer
         .with(telemetry_layer)
-        // console layer
-        .with(tracing_subscriber::fmt::layer()
-            .with_target(true)
-            .with_thread_ids(true)
-            .with_line_number(true))
+        .with(fmt_layer)
         .try_init()?;
 
     tracing::info!(
