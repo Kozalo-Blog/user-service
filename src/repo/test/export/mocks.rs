@@ -76,6 +76,7 @@ impl Services for ServicesMock {
 pub type ExternalId = i64;
 
 impl Users for UsersMock {
+    #[tracing::instrument(skip(self), fields(user_id = %id))]
     async fn get(&self, id: UserId) -> Result<Option<SavedUser>, RepoError<TypeConversionError>> {
         let users = self.users.lock().await;
         match id {

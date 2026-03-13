@@ -26,8 +26,8 @@ where
     U: Users + Send + Sync + 'static,
     S: Services + Send + Sync + 'static,
 {
-    #[autometrics]
     #[tracing::instrument(skip(self, request), fields(user_id = %request.get_ref().id, by_external_id = %request.get_ref().by_external_id))]
+    #[autometrics]
     async fn get(&self, request: Request<GetUserRequest>) -> Result<Response<User>, Status> {
         let req = request.into_inner();
         let id = if req.by_external_id {
@@ -42,11 +42,11 @@ where
         Ok(Response::new(user))
     }
 
-    #[autometrics]
     #[tracing::instrument(skip(self, request), fields(
         external_id = request.get_ref().user.as_ref().map(|u| u.external_id).unwrap_or(0),
         service_name = request.get_ref().service.as_ref().map(|s| s.name.as_str()).unwrap_or("")
     ))]
+    #[autometrics]
     async fn register(&self, request: Request<RegistrationRequest>) -> Result<Response<RegistrationResponse>, Status> {
         let req = request.into_inner();
 
@@ -91,8 +91,8 @@ where
         Ok(Response::new(resp.into()))
     }
 
-    #[autometrics]
     #[tracing::instrument(skip(self, request), fields(user_id = %request.get_ref().id))]
+    #[autometrics]
     async fn update(&self, request: Request<UpdateUserRequest>) -> Result<Response<()>, Status> {
         let req = request.into_inner();
         let grpc_target = req.target
@@ -105,8 +105,8 @@ where
         Ok(Response::new(()))
     }
 
-    #[autometrics]
     #[tracing::instrument(skip(self, request), fields(user_id = %request.get_ref().id, variant = %request.get_ref().variant))]
+    #[autometrics]
     async fn activate_premium(&self, request: Request<ActivatePremiumRequest>) -> Result<Response<ActivatePremiumResponse>, Status> {
         let req = request.into_inner();
         let grpc_variant = PremiumVariant::try_from(req.variant)

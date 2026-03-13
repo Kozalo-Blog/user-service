@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use anyhow::anyhow;
 use chrono::{DateTime, Months, Timelike, Utc};
+use opentelemetry::trace::SpanId;
+use tracing::subscriber::set_default;
 use serde_json::json;
 use tokio::net::TcpListener;
 use tonic::Code;
@@ -14,6 +16,7 @@ use crate::grpc::generated::user_service_server::UserServiceServer;
 use crate::grpc::server::GrpcServer;
 use crate::repo;
 use crate::repo::test::mocks::mock_repositories;
+use crate::repo::test::otel::setup_otel_test;
 use crate::repo::users::Users;
 use crate::repo::services::Services;
 
@@ -137,5 +140,57 @@ async fn test_registration(client: &mut UserServiceClient<Channel>, request: Reg
     let resp = client.register(request).await?.into_inner();
     assert_eq!(resp.id, 1);
     assert_eq!(resp.status, status as i32);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_span_hierarchy() -> anyhow::Result<()> {
+    let (exporter, provider, subscriber) = setup_otel_test();
+    let _guard = set_default(subscriber);
+
+    let addr = start_test_server(mock_repositories()).await?;
+    let mut client = UserServiceClient::connect(format!("http://{}", addr)).await?;
+
+    // Call get — expect NotFound, but spans should still be created
+    let _ = client.get(GetUserRequest { id: 1, by_external_id: false }).await;
+
+    let _ = provider.force_flush();
+    let spans = exporter.get_finished_spans().expect("Failed to get finished spans");
+
+    println!("=== gRPC spans ({}) ===", spans.len());
+    for span in &spans {
+        println!(
+            "  name={:?} trace_id={:?} span_id={:?} parent_span_id={:?}",
+            span.name,
+            span.span_context.trace_id(),
+            span.span_context.span_id(),
+            span.parent_span_id
+        );
+    }
+
+    // We expect at least 2 spans: the handler "get" and the repo "get"
+    assert!(spans.len() >= 2, "Expected at least 2 spans, got {}", spans.len());
+
+    let handler_span = spans.iter()
+        .find(|s| s.name == "get" && s.parent_span_id == SpanId::INVALID)
+        .expect("Should have a root handler 'get' span");
+    let repo_span = spans.iter()
+        .find(|s| s.name == "get" && s.span_context.span_id() != handler_span.span_context.span_id())
+        .expect("Should have a repo 'get' span");
+
+    // Same trace
+    assert_eq!(
+        handler_span.span_context.trace_id(),
+        repo_span.span_context.trace_id(),
+        "Handler and repo spans must share the same trace_id"
+    );
+
+    // Repo span is a child of the handler span
+    assert_eq!(
+        repo_span.parent_span_id,
+        handler_span.span_context.span_id(),
+        "Repo span's parent_span_id must equal handler span's span_id"
+    );
+
     Ok(())
 }

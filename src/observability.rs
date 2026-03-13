@@ -52,11 +52,8 @@ pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
         .with_thread_ids(true)
         .with_line_number(true)
         .with_filter(EnvFilter::from_default_env());
-    let otel_filter = EnvFilter::new("info")
-        .add_directive("axum_tracing_opentelemetry=trace".parse()?)
-        .add_directive("otel=debug".parse()?);
     tracing_subscriber::registry()
-        .with(telemetry_layer.with_filter(otel_filter))
+        .with(telemetry_layer)
         .with(fmt_layer)
         .try_init()?;
 

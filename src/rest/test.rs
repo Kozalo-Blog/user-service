@@ -3,13 +3,17 @@ use std::error::Error;
 use std::sync::Arc;
 use axum::body::{Body, HttpBody};
 use axum::response::Response;
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use chrono::{Months, Timelike, Utc};
 use http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use opentelemetry::trace::SpanId;
+use tracing::subscriber::set_default;
 use serde_json::json;
 use tower::ServiceExt;
 use crate::dto::{Code, ExternalUser, SavedUser, Service, ServiceType};
 use crate::repo::test::mocks::{mock_repositories, ServicesMock, CtorWithData, UsersMock, ExternalId, MockRepositories};
+use crate::repo::test::otel::setup_otel_test;
 use crate::{repo, rest};
 use crate::repo::users::{UserId, Users};
 use crate::repo::services::Services;
@@ -267,4 +271,78 @@ fn build_service() -> Service {
         name: "SadFavBot".to_string(),
         service_type: ServiceType::TelegramBot,
     }
+}
+
+#[tokio::test]
+async fn test_span_hierarchy() -> anyhow::Result<()> {
+    let (exporter, provider, subscriber) = setup_otel_test();
+    let _guard = set_default(subscriber);
+
+    let repos = Arc::new(mock_repositories());
+    let app = rest::router(repos)
+        .layer(OtelInResponseLayer)
+        .layer(OtelAxumLayer::default());
+
+    let response = app.oneshot(
+        Request::builder()
+            .method(http::Method::GET)
+            .uri("/1")
+            .body(Body::empty())?
+    ).await?;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let _ = provider.force_flush();
+    let spans = exporter.get_finished_spans().expect("Failed to get finished spans");
+
+    println!("=== REST spans ({}) ===", spans.len());
+    for span in &spans {
+        println!(
+            "  name={:?} trace_id={:?} span_id={:?} parent_span_id={:?}",
+            span.name,
+            span.span_context.trace_id(),
+            span.span_context.span_id(),
+            span.parent_span_id
+        );
+    }
+
+    // We expect at least 2 spans: OTel middleware + handler get_user (+ possibly repo get)
+    assert!(spans.len() >= 2, "Expected at least 2 spans, got {}", spans.len());
+
+    // All spans should share the same trace_id
+    let trace_id = spans[0].span_context.trace_id();
+    for span in &spans {
+        assert_eq!(
+            span.span_context.trace_id(), trace_id,
+            "All spans must share the same trace_id, but span {:?} has a different one",
+            span.name
+        );
+    }
+
+    // Find the root span (OTel middleware)
+    let root_span = spans.iter()
+        .find(|s| s.parent_span_id == SpanId::INVALID)
+        .expect("Should have a root span (OTel middleware)");
+    println!("Root span: {:?}", root_span.name);
+
+    // Find the handler span — it should be a child of the root
+    let handler_span = spans.iter()
+        .find(|s| s.name == "get_user")
+        .expect("Should have a handler 'get_user' span");
+    assert_eq!(
+        handler_span.parent_span_id,
+        root_span.span_context.span_id(),
+        "Handler span must be a child of the OTel middleware root span"
+    );
+
+    // If repo span exists, it should be a child of the handler span
+    if let Some(repo_span) = spans.iter().find(|s| s.name == "get") {
+        assert_eq!(
+            repo_span.parent_span_id,
+            handler_span.span_context.span_id(),
+            "Repo span's parent_span_id must equal handler span's span_id"
+        );
+    }
+
+    Ok(())
 }
