@@ -52,8 +52,10 @@ pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
         .with_thread_ids(true)
         .with_line_number(true)
         .with_filter(EnvFilter::from_default_env());
+    // Allow all user-service spans but suppress noisy h2/hyper connection internals
+    let otel_filter = EnvFilter::new("trace,h2=off,hyper=off,tower=off");
     tracing_subscriber::registry()
-        .with(telemetry_layer)
+        .with(telemetry_layer.with_filter(otel_filter))
         .with(fmt_layer)
         .try_init()?;
 
