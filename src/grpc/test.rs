@@ -12,7 +12,7 @@ use tonic::transport::{Channel, Server};
 use crate::grpc::generated::{ActivatePremiumRequest, ExternalUser, GetUserRequest, Location, PremiumVariant, RegistrationRequest, RegistrationStatus, Service, ServiceType, UpdateUserRequest};
 use crate::grpc::generated::update_user_request::Target;
 use crate::grpc::generated::user_service_client::UserServiceClient;
-use crate::grpc::generated::user_service_server::UserServiceServer;
+use crate::grpc::generated::user_service_server::{UserService, UserServiceServer};
 use crate::grpc::server::GrpcServer;
 use crate::repo;
 use crate::repo::test::mocks::mock_repositories;
@@ -148,11 +148,10 @@ async fn test_span_hierarchy() -> anyhow::Result<()> {
     let (exporter, provider, subscriber) = setup_otel_test();
     let _guard = set_default(subscriber);
 
-    let addr = start_test_server(mock_repositories()).await?;
-    let mut client = UserServiceClient::connect(format!("http://{}", addr)).await?;
-
-    // Call get — expect NotFound, but spans should still be created
-    let _ = client.get(GetUserRequest { id: 1, by_external_id: false }).await;
+    // Call the handler directly in-process — no network, no thread boundaries,
+    // so the thread-local subscriber is reliably active for all spans
+    let server = GrpcServer::new(Arc::new(mock_repositories()));
+    let _ = server.get(tonic::Request::new(GetUserRequest { id: 1, by_external_id: false })).await;
 
     let _ = provider.force_flush();
     let spans = exporter.get_finished_spans().expect("Failed to get finished spans");
@@ -168,7 +167,7 @@ async fn test_span_hierarchy() -> anyhow::Result<()> {
         );
     }
 
-    // We expect at least 2 spans: the handler "get" and the repo "get"
+    // We expect exactly 2 spans: the handler "get" and the repo "get"
     assert!(spans.len() >= 2, "Expected at least 2 spans, got {}", spans.len());
 
     let handler_span = spans.iter()
