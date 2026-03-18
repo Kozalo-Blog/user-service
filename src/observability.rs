@@ -4,47 +4,20 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use crate::env::get_value_or_default;
 
 /// Service name from Cargo.toml
 const SERVICE_NAME: &str = env!("CARGO_PKG_NAME");
 
-/// Initialize tracing subscriber with OpenTelemetry OTLP export
-///
-/// Configures tracing with:
-/// - Console output with structured formatting
-/// - OpenTelemetry OTLP exporter to VictoriaStack/Grafana
-/// - Environment-based log level filtering
+/// Initialize tracing subscriber, optionally with OpenTelemetry OTLP export.
 ///
 /// Configuration via environment variables:
-/// - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (default: http://localhost:4317)
+/// - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint. If unset, OTLP export is
+///   disabled and only console output is produced (useful for local development).
+/// - `RUST_LOG`: console log level filter
 pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
-    let endpoint = get_value_or_default(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://localhost:4317".to_string(),
-    );
-
-    // Initialize OpenTelemetry OTLP exporter with gRPC (Tonic)
-    let otlp_exporter = SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(endpoint)
-        .build()?;
-
-    // Create tracer provider with OTLP exporter and resource
-    let resource = Resource::builder()
-        .with_service_name(SERVICE_NAME.to_owned())
-        .build();
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(otlp_exporter)
-        .with_resource(resource)
-        .build();
-
-    // Set as global tracer provider
+    let provider = build_provider()?;
     global::set_tracer_provider(provider.clone());
 
-    // Initialize the tracing subscriber with all layers
-    let telemetry_layer = tracing_opentelemetry::layer()
-        .with_tracer(provider.tracer(SERVICE_NAME));
     // Per-layer filtering so RUST_LOG controls console verbosity
     // without disabling OTel spans needed for trace context propagation
     let fmt_layer = tracing_subscriber::fmt::layer()
@@ -55,13 +28,31 @@ pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     // Allow all user-service spans but suppress noisy h2/hyper connection internals
     let otel_filter = EnvFilter::new("trace,h2=off,hyper=off,tower=off");
     tracing_subscriber::registry()
-        .with(telemetry_layer.with_filter(otel_filter))
+        .with(tracing_opentelemetry::layer()
+            .with_tracer(provider.tracer(SERVICE_NAME))
+            .with_filter(otel_filter))
         .with(fmt_layer)
         .try_init()?;
 
-    tracing::info!(
-        service_name = %SERVICE_NAME,
-        "Tracing initialized successfully with OpenTelemetry OTLP export"
-    );
+    tracing::info!(service_name = %SERVICE_NAME, "Tracing initialized");
     Ok(provider)
+}
+
+fn build_provider() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
+    let Some(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok() else {
+        tracing::warn!("OTEL_EXPORTER_OTLP_ENDPOINT is not set — OTLP export disabled");
+        return Ok(SdkTracerProvider::builder().build());
+    };
+
+    let otlp_exporter = SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint)
+        .build()?;
+    let resource = Resource::builder()
+        .with_service_name(SERVICE_NAME.to_owned())
+        .build();
+    Ok(SdkTracerProvider::builder()
+        .with_batch_exporter(otlp_exporter)
+        .with_resource(resource)
+        .build())
 }
