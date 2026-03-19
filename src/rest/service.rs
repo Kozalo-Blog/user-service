@@ -123,6 +123,8 @@ where
     U: Users,
     S: Services,
 {
+    location.validate()
+        .log_route_warn("Invalid location coordinates")?;
     update_impl(repos, id, location.into()).await
 }
 

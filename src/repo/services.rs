@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::dto::{Service, ServiceType};
+use crate::dto::error::TypeConversionError;
+use crate::repo::error::RepoError;
 
 pub trait Services: Send + Sync {
-    fn create(&self, service_type: ServiceType, name: &str) -> impl Future<Output = Result<i32, sqlx::Error>> + Send;
-    fn get_id(&self, service: &Service) -> impl Future<Output = Result<Option<i32>, sqlx::Error>> + Send;
+    fn create(&self, service_type: ServiceType, name: &str) -> impl Future<Output = Result<i32, RepoError<TypeConversionError>>> + Send;
+    fn get_id(&self, service: &Service) -> impl Future<Output = Result<Option<i32>, RepoError<TypeConversionError>>> + Send;
 }
 
 pub struct ServicesPostgres {
@@ -33,18 +35,18 @@ impl ServicesPostgres {
 
 impl Services for ServicesPostgres {
     #[tracing::instrument(skip(self), fields(service_type = ?service_type, name = %name))]
-    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
+    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, RepoError<TypeConversionError>> {
         tracing::info!("Creating new service");
         let result = sqlx::query_scalar!("INSERT INTO Services (type, name) VALUES ($1, $2) RETURNING id",
                 service_type as ServiceType, name)
             .fetch_one(&self.pool)
-            .await?;
+            .await.map_err(|e| RepoError::Database(e.into()))?;
         tracing::info!(service_id = %result, "Service created successfully");
         Ok(result)
     }
 
     #[tracing::instrument(skip(self), fields(service_name = %service.name, service_type = ?service.service_type))]
-    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
+    async fn get_id(&self, service: &Service) -> Result<Option<i32>, RepoError<TypeConversionError>> {
         let cached_id = {
             self.id_cache
                 .read().await
@@ -56,7 +58,7 @@ impl Services for ServicesPostgres {
             let fetched_id = sqlx::query_scalar!("SELECT id FROM Services WHERE name = $1 AND type = $2",
                     &service.name, service.service_type as ServiceType)
                 .fetch_optional(&self.pool)
-                .await?;
+                .await.map_err(|e| RepoError::Database(e.into()))?;
             if let Some(id) = fetched_id {
                 tracing::debug!(service_id = %id, "Service ID found, caching");
                 self.id_cache
