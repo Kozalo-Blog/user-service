@@ -108,7 +108,7 @@ impl Users for UsersPostgres {
             }
             Err(e) => {
                 tracing::error!(error = %e, "Database error while fetching user");
-                Err(RepoError::Database(e.into()))
+                Err(e.into())
             }
         }
     }
@@ -116,15 +116,13 @@ impl Users for UsersPostgres {
     #[tracing::instrument(skip(self, user, consent_info), fields(external_id = %user.external_id, service_id = %service_id))]
     async fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> Result<i64, RepoError<TypeConversionError>> {
         tracing::debug!("Starting user registration transaction");
-        let mut tx = self.pool.begin().await
-            .map_err(|e| RepoError::Database(e.into()))?;
+        let mut tx = self.pool.begin().await?;
 
         tracing::debug!("Inserting user into Users table");
         let user_id = sqlx::query_scalar!("INSERT INTO Users (name) VALUES ($1) RETURNING id",
                 user.name)
             .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| RepoError::Database(e.into()))?;
+            .await?;
         tracing::debug!(user_id, "User created with ID");
 
         tracing::debug!("Inserting user-service mapping");
@@ -134,33 +132,28 @@ impl Users for UsersPostgres {
             user_id, service_id, user.external_id
         )
             .execute(&mut *tx)
-            .await
-            .map_err(|e| RepoError::Database(e.into()))?;
+            .await?;
 
         if rows.rows_affected() == 0 {
             tracing::debug!(orphan_user_id = %user_id, "Concurrent registration detected, rolling back orphan");
-            tx.rollback().await
-                .map_err(|e| RepoError::Database(e.into()))?;
-            return sqlx::query_scalar!(
+            tx.rollback().await?;
+            return Ok(sqlx::query_scalar!(
                 "SELECT user_id FROM User_Service_Mappings
                  WHERE service_id = $1 AND external_id = $2",
                 service_id, user.external_id
             )
                 .fetch_one(&self.pool)
-                .await
-                .map_err(|e| RepoError::Database(e.into()));
+                .await?);
         }
 
         tracing::debug!("Inserting consent information");
         sqlx::query!("INSERT INTO Consents (uid, service_id, info) VALUES ($1, $2, $3)",
                 user_id, service_id, consent_info)
             .execute(&mut *tx)
-            .await
-            .map_err(|e| RepoError::Database(e.into()))?;
+            .await?;
 
         tracing::debug!("Committing transaction");
-        tx.commit().await
-            .map_err(|e| RepoError::Database(e.into()))?;
+        tx.commit().await?;
         tracing::info!(user_id, "User registered successfully");
         Ok(user_id)
     }
@@ -172,8 +165,7 @@ impl Users for UsersPostgres {
                 WHERE service_id = $1 AND external_id = $2",
                 service_id, external_id)
             .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| RepoError::Database(e.into()))?;
+            .await?;
         if let Some(user_id) = result {
             tracing::debug!(user_id, "Found user ID");
         } else {
@@ -188,11 +180,11 @@ impl Users for UsersPostgres {
         let rows_affected = match target {
             UpdateTarget::Language(code) => self.update_language(user_id, code).await,
             UpdateTarget::Location { latitude, longitude } => self.update_location(user_id, latitude, longitude).await,
-        }.map_err(|e| RepoError::Database(e.into()))?.rows_affected();
+        }?.rows_affected();
 
         if rows_affected.is_zero() {
             tracing::warn!("No rows affected - user not found");
-            Err(RepoError::Database(sqlx::Error::RowNotFound.into()))
+            Err(sqlx::Error::RowNotFound.into())
         } else {
             tracing::info!(rows_affected, "User value updated successfully");
             Ok(())
@@ -201,40 +193,37 @@ impl Users for UsersPostgres {
 
     #[tracing::instrument(skip(self), fields(user_id = %user_id, variant = ?variant))]
     async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, RepoError<TypeConversionError>> {
-        tracing::debug!("Starting premium activation transaction");
-        let mut tx = self.pool.begin().await
-            .map_err(|e| RepoError::Database(e.into()))?;
-
         tracing::debug!("Fetching current premium status");
-        let maybe_row = sqlx::query!(
-            "SELECT premium_till FROM Users WHERE id = $1 FOR UPDATE NOWAIT",
+        let Some(current_premium_till) = sqlx::query!(
+            "SELECT premium_till FROM Users WHERE id = $1",
             user_id
         )
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(|e| RepoError::Database(e.into()))?;
-
-        let start_datetime = match maybe_row {
-            None => {
-                tracing::info!("No rows affected - user not found");
-                tx.rollback().await.map_err(|e| RepoError::Database(e.into()))?;
-                return Ok(None);
-            }
-            Some(row) => row.premium_till.unwrap_or_else(|| {
-                tracing::debug!("No existing premium - starting from now");
-                Utc::now()
-            }),
+            .fetch_optional(&self.pool)
+            .await?
+            .map(|row| row.premium_till)
+        else {
+            tracing::warn!("User not found");
+            return Ok(None);
         };
 
+        let start_datetime = current_premium_till.unwrap_or_else(|| {
+            tracing::debug!("No existing premium - starting from now");
+            Utc::now()
+        });
         let till = variant + start_datetime;
         tracing::debug!(premium_till = %till, "Calculated new premium expiry");
 
-        sqlx::query!("UPDATE Users SET premium_till = $2 WHERE id = $1", user_id, Some(&till))
-            .execute(&mut *tx)
-            .await.map_err(|e| RepoError::Database(e.into()))?;
+        let rows_affected = sqlx::query!(
+            "UPDATE Users SET premium_till = $2
+             WHERE id = $1 AND premium_till IS NOT DISTINCT FROM $3",
+            user_id, till, current_premium_till
+        ).execute(&self.pool).await?.rows_affected();
 
-        tracing::debug!("Committing transaction");
-        tx.commit().await.map_err(|e| RepoError::Database(e.into()))?;
+        if rows_affected == 0 {
+            tracing::warn!("Concurrent premium activation detected");
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+
         tracing::info!(premium_till = %till, "Premium activated successfully");
         Ok(Some(till))
     }

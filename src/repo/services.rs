@@ -40,7 +40,7 @@ impl Services for ServicesPostgres {
         let result = sqlx::query_scalar!("INSERT INTO Services (type, name) VALUES ($1, $2) RETURNING id",
                 service_type as ServiceType, name)
             .fetch_one(&self.pool)
-            .await.map_err(|e| RepoError::Database(e.into()))?;
+            .await?;
         tracing::info!(service_id = %result, "Service created successfully");
         Ok(result)
     }
@@ -58,7 +58,7 @@ impl Services for ServicesPostgres {
             let fetched_id = sqlx::query_scalar!("SELECT id FROM Services WHERE name = $1 AND type = $2",
                     &service.name, service.service_type as ServiceType)
                 .fetch_optional(&self.pool)
-                .await.map_err(|e| RepoError::Database(e.into()))?;
+                .await?;
             if let Some(id) = fetched_id {
                 tracing::debug!(service_id = %id, "Service ID found, caching");
                 self.id_cache
