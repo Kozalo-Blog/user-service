@@ -60,7 +60,7 @@ impl UserServiceClient {
         let app = self.router.clone();
         let response = app.oneshot(
             Request::builder()
-                .method(http::Method::PUT)
+                .method(http::Method::POST)
                 .uri("/external")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
                 .body(Body::from(
@@ -84,7 +84,7 @@ impl UserServiceClient {
         let app = self.router.clone();
         let response = app.oneshot(
             Request::builder()
-                .method(http::Method::POST)
+                .method(http::Method::PATCH)
                 .uri(format!("/{user_id}/language/{code}"))
                 .body(Body::empty())?
         ).await?;
@@ -96,7 +96,7 @@ impl UserServiceClient {
         let app = self.router.clone();
         let response = app.oneshot(
             Request::builder()
-                .method(http::Method::POST)
+                .method(http::Method::PATCH)
                 .uri(format!("/{user_id}/location/?latitude={latitude}&longitude={longitude}"))
                 .body(Body::empty())?
         ).await?;
