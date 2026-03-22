@@ -52,7 +52,7 @@ create_mock_struct!(ServicesMock, i32, i32, Service, services);
 create_mock_struct!(UsersMock, i64, ExternalId, SavedUser, users);
 
 impl Services for ServicesMock {
-    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, sqlx::Error> {
+    async fn create(&self, service_type: ServiceType, name: &str) -> Result<i32, RepoError<TypeConversionError>> {
         tracing::info!("ServiceMock:create: {name} ({service_type:?})");
         let id = self.gen_id().await;
         let service = (name.to_string(), service_type).into();
@@ -61,7 +61,7 @@ impl Services for ServicesMock {
         Ok(id)
     }
 
-    async fn get_id(&self, service: &Service) -> Result<Option<i32>, sqlx::Error> {
+    async fn get_id(&self, service: &Service) -> Result<Option<i32>, RepoError<TypeConversionError>> {
         // since this is just a mock, use the simplest O(n) search
         self.services.lock().await
             .iter()
@@ -93,7 +93,7 @@ impl Users for UsersMock {
         }
     }
 
-    async fn register(&self, user: ExternalUser, service_id: i32, _: serde_json::Value) -> Result<i64, sqlx::Error> {
+    async fn register(&self, user: ExternalUser, service_id: i32, _: serde_json::Value) -> Result<i64, RepoError<TypeConversionError>> {
         tracing::info!("UsersMock:register: {user:?} (service_id = {service_id})");
         let id = self.gen_id().await;
         let saved_user = SavedUser {
@@ -110,7 +110,7 @@ impl Users for UsersMock {
             .unwrap_or(Ok(id))
     }
 
-    async fn get_user_id(&self, _: i32, external_id: i64) -> Result<Option<i64>, sqlx::Error> {
+    async fn get_user_id(&self, _: i32, external_id: i64) -> Result<Option<i64>, RepoError<TypeConversionError>> {
         let user_id = external_id as ExternalId;
         self.users.lock().await
             .get(&user_id)
@@ -118,19 +118,20 @@ impl Users for UsersMock {
             .transpose()
     }
 
-    async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), sqlx::Error> {
+    async fn update_value(&self, user_id: i64, target: UpdateTarget) -> Result<(), RepoError<TypeConversionError>> {
         tracing::info!("UsersMock:update_value for {user_id} - {target:?}");
         self.modify_user(user_id, |user| {
             match target {
                 UpdateTarget::Language(code) => { user.language_code.replace(code); },
                 UpdateTarget::Location { latitude, longitude } => { user.location.replace((latitude, longitude).into()); },
             }
-        }).await
+        }).await.map_err(|e| RepoError::Database(e.into()))
     }
 
-    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    async fn activate_premium(&self, user_id: i64, variant: PremiumVariant) -> Result<Option<DateTime<Utc>>, RepoError<TypeConversionError>> {
         tracing::info!("UsersMock:activate_premium for {user_id} for {}", variant as u32);
-        let premium_active = self.find_user(user_id).await?
+        let premium_active = self.find_user(user_id).await
+            .map_err(|e| RepoError::Database(e.into()))?
             .premium_till.is_some();
         if premium_active {
             return Ok(None)
@@ -138,7 +139,7 @@ impl Users for UsersMock {
 
         self.modify_user(user_id, |user| {
             user.premium_till.replace(variant.into());
-        }).await?;
+        }).await.map_err(|e| RepoError::Database(e.into()))?;
         Ok(Some(variant.into()))
     }
 }
