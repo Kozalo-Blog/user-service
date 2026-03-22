@@ -6,6 +6,7 @@ mod rest;
 mod observability;
 
 use std::sync::Arc;
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
@@ -52,20 +53,26 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
     let app = axum::Router::new()
         .nest("/api/rest/v1/user", rest::router(repos))
         .layer(prometheus_layer)
-        .layer(OtelInResponseLayer::default())
+        .layer(OtelInResponseLayer)
         .layer(OtelAxumLayer::default())
         .route("/metrics", get(|| async move {
             let auto_metrics = autometrics::prometheus_exporter::encode_to_string()
-                .expect("failed to encode autometrics");
-
+                .map_err(|e| {
+                    tracing::error!(error = %e, "failed to encode autometrics");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
             let mut buffer = vec![];
-            let metrics = prometheus.gather();
-            TextEncoder::new().encode(&metrics, &mut buffer)
-                .expect("failed to encode prometheus metrics");
+            TextEncoder::new().encode(&prometheus.gather(), &mut buffer)
+                .map_err(|e| {
+                    tracing::error!(error = %e, "failed to encode prometheus metrics");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
             let custom_metrics = String::from_utf8(buffer)
-                .expect("prometheus metrics must be valid UTF-8");
-
-            metric_handle.render() + &auto_metrics + &custom_metrics
+                .map_err(|e| {
+                    tracing::error!(error = %e, "prometheus metrics not valid UTF-8");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            Ok::<String, StatusCode>(metric_handle.render() + &auto_metrics + &custom_metrics)
         }));
 
     let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;

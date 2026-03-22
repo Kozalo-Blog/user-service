@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use axum::{Extension, Json};
 use axum::extract::{Path, Query};
-use axum::routing::{get, post, put};
+use axum::routing::{get, patch, post};
 use axum_route_error::RouteError;
 use axum::http::StatusCode;
 use crate::dto::{Code, Location, RegistrationResponse, RegistrationStatus};
@@ -20,9 +20,9 @@ where
     axum::Router::new()
         .route("/{id}", get(get_user::<U, S>))
         .route("/external/{external_id}", get(get_external_user::<U, S>))
-        .route("/external", put(register_user::<U, S>))
-        .route("/{id}/language/{code}", post(update_language::<U, S>))
-        .route("/{id}/location/", post(update_location::<U, S>))
+        .route("/external", post(register_user::<U, S>))
+        .route("/{id}/language/{code}", patch(update_language::<U, S>))
+        .route("/{id}/location/", patch(update_location::<U, S>))
         .route("/{id}/premium/activate/{variant}", post(activate_premium::<U, S>))
         .layer(Extension(repos))
 }
@@ -123,6 +123,8 @@ where
     U: Users,
     S: Services,
 {
+    location.validate()
+        .log_route_warn("Invalid location coordinates")?;
     update_impl(repos, id, location.into()).await
 }
 

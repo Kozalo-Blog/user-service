@@ -2,7 +2,7 @@ use std::ops::Add;
 use chrono::{DateTime, Months, Utc};
 use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
-use crate::dto::error::{CodeStringLengthError, VecLengthAssertionError};
+use crate::dto::error::{CodeStringLengthError, LocationError, VecLengthAssertionError};
 
 /// DTO for JSON request and `repo::Users::register()`
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,6 +41,18 @@ impl std::fmt::Display for Code {
 
 // IMPLEMENTATIONS
 
+
+impl Location {
+    pub fn validate(&self) -> Result<(), LocationError> {
+        if !self.latitude.is_finite() || self.latitude < -90.0 || self.latitude > 90.0 {
+            return Err(LocationError("latitude must be finite and in [-90, 90]"));
+        }
+        if !self.longitude.is_finite() || self.longitude < -180.0 || self.longitude > 180.0 {
+            return Err(LocationError("longitude must be finite and in [-180, 180]"));
+        }
+        Ok(())
+    }
+}
 
 impl SavedUser {
     pub fn premium(&self) -> bool {
@@ -83,7 +95,7 @@ impl TryFrom<&str> for Code {
     type Error = CodeStringLengthError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let chars: [char; 2] = value.chars()
+        let chars: [char; 2] = value.to_lowercase().chars()
             .collect::<Vec<char>>()
             .try_into()
             .map_err(|_| CodeStringLengthError)?;

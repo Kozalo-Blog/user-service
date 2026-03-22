@@ -19,6 +19,9 @@ pub struct TypeConversionError(Box<dyn std::error::Error + Send + Sync + 'static
 #[derive(Debug, Display, Error)]
 pub struct EnumUnspecifiedValue;
 
+#[derive(Debug, Display, Error)]
+pub struct LocationError(pub &'static str);
+
 
 // IMPLEMENTATIONS
 

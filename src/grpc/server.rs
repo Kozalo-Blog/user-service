@@ -5,6 +5,7 @@ use derive_more::Constructor;
 use tonic::{Request, Response, Status};
 use crate::grpc::generated::user_service_server::UserService;
 use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
+use crate::grpc::generated::update_user_request::Target;
 use crate::dto::RegistrationStatus;
 use crate::{dto, repo};
 use crate::repo::users::{UserId, Users};
@@ -97,6 +98,11 @@ where
         let req = request.into_inner();
         let grpc_target = req.target
             .ok_or_invalid_argument("The 'target' field is not set")?;
+        if let Target::Location(ref loc) = grpc_target {
+            dto::Location { latitude: loc.latitude, longitude: loc.longitude }
+                .validate()
+                .into_invalid_argument()?;
+        }
         let repo_target = grpc_target.try_into()
             .into_invalid_argument()?;
         self.repos.users.update_value(req.id, repo_target).await

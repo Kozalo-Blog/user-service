@@ -30,3 +30,9 @@ impl From<sqlx::Error> for DatabaseError {
         Self(value)
     }
 }
+
+impl<EO: Serialize> From<sqlx::Error> for RepoError<EO> {
+    fn from(e: sqlx::Error) -> Self {
+        RepoError::Database(e.into())
+    }
+}

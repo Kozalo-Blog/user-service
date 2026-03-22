@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE Users SET premium_till = $2\n             WHERE id = $1 AND premium_till IS NOT DISTINCT FROM $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "818e20fdfee874fce597766db5bbdee92214964ba08d5a19263aeb8fcdf73427"
+}
