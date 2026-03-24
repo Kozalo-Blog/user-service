@@ -17,6 +17,7 @@ const SERVICE_NAME: &str = env!("CARGO_PKG_NAME");
 pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     let provider = build_provider()?;
     global::set_tracer_provider(provider.clone());
+    global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
 
     // Per-layer filtering so RUST_LOG controls console verbosity
     // without disabling OTel spans needed for trace context propagation

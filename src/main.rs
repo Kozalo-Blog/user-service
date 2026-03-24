@@ -5,6 +5,7 @@ mod grpc;
 mod rest;
 mod observability;
 
+use std::net::Ipv6Addr;
 use std::sync::Arc;
 use axum::http::StatusCode;
 use axum::routing::get;
@@ -14,6 +15,8 @@ use prometheus::{Encoder, TextEncoder};
 use tokio::join;
 use tokio::net::TcpListener;
 use tonic::transport::Server;
+use tonic_tracing_opentelemetry::middleware::server::OtelGrpcLayer;
+use tower::ServiceBuilder;
 use crate::grpc::generated::user_service_server::UserServiceServer;
 use crate::grpc::server::GrpcServer;
 
@@ -75,7 +78,7 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
             Ok::<String, StatusCode>(metric_handle.render() + &auto_metrics + &custom_metrics)
         }));
 
-    let listener = TcpListener::bind(("0.0.0.0", AXUM_PORT)).await?;
+    let listener = TcpListener::bind((Ipv6Addr::UNSPECIFIED, AXUM_PORT)).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -84,6 +87,7 @@ async fn run_rest_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<(
 
 async fn run_grpc_server(repos: Arc<repo::ProdRepositories>) -> anyhow::Result<()> {
     Server::builder()
+        .layer(ServiceBuilder::new().layer(OtelGrpcLayer::default()))
         .add_service(UserServiceServer::new(GrpcServer::new(repos)))
         .serve_with_shutdown(([0,0,0,0], TONIC_PORT).into(), shutdown_signal())
         .await?;
