@@ -134,6 +134,7 @@ Replaces verbose `.map_err()` blocks with single-line calls.
 
 ## Code Style
 
+- Prefer functional-style constructs (iterators, combinators, `partition`/`chain`/`fold`, `Result`/`Option` combinators) over imperative loops and mutable accumulators, as long as it doesn't harm performance significantly
 - Use Result/Option combinators (`.inspect()`, `.and_then()`, `.transpose()`) over verbose match expressions
 - Move logging to delegated functions when possible
 - Prefer `env::get_value_or_default()` for optional environment variables

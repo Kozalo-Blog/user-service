@@ -5,6 +5,7 @@ use crate::dto::{Location, SavedUser};
 #[derive(Serialize, Deserialize)]
 pub struct UserView {
     id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     options: Options,
     is_premium: bool
@@ -12,7 +13,9 @@ pub struct UserView {
 
 #[derive(Serialize, Deserialize)]
 pub struct Options {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub language_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<Location>,
 }
 

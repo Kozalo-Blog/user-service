@@ -93,6 +93,26 @@ impl Users for UsersMock {
         }
     }
 
+    async fn get_many(&self, ids: Vec<UserId>) -> Result<HashMap<UserId, SavedUser>, RepoError<TypeConversionError>> {
+        let users = self.users.lock().await;
+        let mut found = HashMap::new();
+        for id in ids {
+            match id {
+                UserId::Internal(internal_id) => {
+                    if let Some(usr) = users.values().find(|usr| usr.id == internal_id) {
+                        found.insert(id, usr.clone());
+                    }
+                }
+                UserId::External(external_id) => {
+                    if let Some(usr) = users.get(&external_id) {
+                        found.insert(id, usr.clone());
+                    }
+                }
+            }
+        }
+        Ok(found)
+    }
+
     async fn register(&self, user: ExternalUser, service_id: i32, _: serde_json::Value) -> Result<i64, RepoError<TypeConversionError>> {
         tracing::info!("UsersMock:register: {user:?} (service_id = {service_id})");
         let id = self.gen_id().await;

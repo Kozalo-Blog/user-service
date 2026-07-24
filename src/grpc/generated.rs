@@ -8,6 +8,44 @@ use crate::repo::users::UpdateTarget;
 
 tonic::include_proto!("user_service");
 
+/// Applies a `FieldMask`-style projection to a [`User`] in place, clearing any field whose path is
+/// not selected. The internal `id` is always retained (correlation to the request is via the
+/// `GetUsersResponse` map key, which holds the requested — possibly external — id).
+///
+/// Supported paths: `id`, `name`, `is_premium`, `options`, `options.language_code`,
+/// `options.location`. Selecting a nested `options.*` path keeps `options` but drops its other
+/// sub-fields; selecting bare `options` keeps the whole message. Unknown paths are ignored.
+///
+/// Note: `is_premium` is a bare proto3 `bool` with no field presence, so a masked-out `is_premium`
+/// is reset to its default (`false`) rather than becoming truly absent — a client cannot tell
+/// "pruned" from "not premium". This matches Google's `FieldMaskUtil` behaviour for scalar fields.
+pub fn project_user(user: &mut User, paths: &[String]) {
+    let keep_name = paths.iter().any(|p| p == "name");
+    let keep_premium = paths.iter().any(|p| p == "is_premium");
+    let keep_options = paths.iter().any(|p| p == "options");
+    let keep_language = keep_options || paths.iter().any(|p| p == "options.language_code");
+    let keep_location = keep_options || paths.iter().any(|p| p == "options.location");
+
+    if !keep_name {
+        user.name = None;
+    }
+    if !keep_premium {
+        user.is_premium = false;
+    }
+    if keep_language || keep_location {
+        if let Some(options) = user.options.as_mut() {
+            if !keep_language {
+                options.language_code = None;
+            }
+            if !keep_location {
+                options.location = None;
+            }
+        }
+    } else {
+        user.options = None;
+    }
+}
+
 impl Into<dto::ExternalUser> for ExternalUser {
     fn into(self) -> dto::ExternalUser {
         dto::ExternalUser {
