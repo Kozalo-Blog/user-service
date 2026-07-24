@@ -16,6 +16,19 @@ pub struct RegistrationRequest {
     pub consent_info: serde_json::Value,
 }
 
+/// Query parameters for `GET /search`. Internal and external ids are named explicitly and may be
+/// mixed in one call (serde_urlencoded has no repeated-key `Vec` support, so each is comma-separated).
+#[derive(Deserialize)]
+pub struct SearchParams {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub external_id: Option<String>,
+    /// Comma-separated `FieldMask` paths, e.g. `options.language_code`.
+    #[serde(default)]
+    pub fields: Option<String>,
+}
+
 #[derive(Clone, FromStr)]
 pub enum PremiumVariantRest {
     Month,
@@ -24,13 +37,13 @@ pub enum PremiumVariantRest {
     Year,
 }
 
-impl Into<PremiumVariant> for PremiumVariantRest {
-    fn into(self) -> PremiumVariant {
-        match self {
-            Self::Month => PremiumVariant::Month,
-            Self::Quarter => PremiumVariant::Quarter,
-            Self::HalfYear => PremiumVariant::HalfYear,
-            Self::Year => PremiumVariant::Year,
+impl From<PremiumVariantRest> for PremiumVariant {
+    fn from(value: PremiumVariantRest) -> Self {
+        match value {
+            PremiumVariantRest::Month => PremiumVariant::Month,
+            PremiumVariantRest::Quarter => PremiumVariant::Quarter,
+            PremiumVariantRest::HalfYear => PremiumVariant::HalfYear,
+            PremiumVariantRest::Year => PremiumVariant::Year,
         }
     }
 }

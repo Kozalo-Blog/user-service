@@ -9,7 +9,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tonic::Code;
 use tonic::transport::{Channel, Server};
-use crate::grpc::generated::{ActivatePremiumRequest, ExternalUser, GetUserRequest, Location, PremiumVariant, RegistrationRequest, RegistrationStatus, Service, ServiceType, UpdateUserRequest};
+use crate::grpc::generated::{ActivatePremiumRequest, ExternalUser, GetUsersRequest, GetUserRequest, Location, PremiumVariant, RegistrationRequest, RegistrationStatus, Service, ServiceType, UpdateUserRequest};
 use crate::grpc::generated::update_user_request::Target;
 use crate::grpc::generated::user_service_client::UserServiceClient;
 use crate::grpc::generated::user_service_server::{UserService, UserServiceServer};
@@ -34,8 +34,8 @@ async fn test_all() -> anyhow::Result<()> {
         id: ext_id,
         by_external_id: true,
     };
-    test_get_not_found(&mut client, get_req_by_internal_id.clone()).await;
-    test_get_not_found(&mut client, get_req_by_external_id.clone()).await;
+    test_get_not_found(&mut client, get_req_by_internal_id).await;
+    test_get_not_found(&mut client, get_req_by_external_id).await;
 
     let registration_req = RegistrationRequest {
         user: Some(ExternalUser {
@@ -51,7 +51,7 @@ async fn test_all() -> anyhow::Result<()> {
     test_registration(&mut client, registration_req.clone(), RegistrationStatus::Created).await?;
     test_registration(&mut client, registration_req, RegistrationStatus::AlreadyPresent).await?;
 
-    let user = client.get(get_req_by_internal_id.clone()).await?.into_inner();
+    let user = client.get(get_req_by_internal_id).await?.into_inner();
     assert!(!user.is_premium);
     let opts = user.options.unwrap();
     assert_eq!(opts.language_code, None);
@@ -85,8 +85,37 @@ async fn test_all() -> anyhow::Result<()> {
     assert_eq!(user.name, Some(username));
     assert!(user.is_premium);
     let opts = &user.options.unwrap();
-    assert_eq!(opts.language_code, Some(lang));
+    assert_eq!(opts.language_code, Some(lang.clone()));
     assert_eq!(opts.location, Some(Location { latitude, longitude }));
+
+    // batch getMany: existing id resolved (keyed by the requested internal id), missing id omitted
+    let resp = client.get_many(GetUsersRequest {
+        ids: vec![1, 999],
+        by_external_id: false,
+        fields: None,
+    }).await?.into_inner();
+    assert_eq!(resp.users.len(), 1);
+    let fetched = &resp.users[&1];
+    assert_eq!(fetched.id, 1);
+    assert!(fetched.is_premium);
+    assert_eq!(fetched.options.as_ref().unwrap().language_code, Some(lang.clone()));
+
+    // batch getMany by external id with a FieldMask projection; keyed by the requested external id
+    let resp = client.get_many(GetUsersRequest {
+        ids: vec![ext_id],
+        by_external_id: true,
+        fields: Some(prost_types::FieldMask {
+            paths: vec!["options.language_code".to_owned()],
+        }),
+    }).await?.into_inner();
+    assert_eq!(resp.users.len(), 1);
+    let projected = &resp.users[&ext_id];   // keyed by the external id we asked for
+    assert_eq!(projected.id, 1);            // inner id is still our internal id
+    assert_eq!(projected.name, None);       // pruned
+    assert!(!projected.is_premium);         // pruned (cleared to default)
+    let opts = projected.options.as_ref().unwrap();
+    assert_eq!(opts.language_code, Some(lang));
+    assert_eq!(opts.location, None);        // pruned
 
     Ok(())
 }

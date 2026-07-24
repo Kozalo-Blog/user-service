@@ -4,7 +4,8 @@ use autometrics::autometrics;
 use derive_more::Constructor;
 use tonic::{Request, Response, Status};
 use crate::grpc::generated::user_service_server::UserService;
-use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
+use crate::grpc::generated::{ActivatePremiumRequest, ActivatePremiumResponse, GetUsersRequest, GetUsersResponse, GetUserRequest, PremiumVariant, RegistrationRequest, RegistrationResponse, ServiceType, UpdateUserRequest, User};
+use crate::grpc::generated::project_user;
 use crate::grpc::generated::update_user_request::Target;
 use crate::dto::RegistrationStatus;
 use crate::{dto, repo};
@@ -41,6 +42,29 @@ where
             .map(Into::into)
             .ok_or_not_found("The user is not found")?;
         Ok(Response::new(user))
+    }
+
+    #[tracing::instrument(skip(self, request), fields(ids_count = request.get_ref().ids.len(), by_external_id = %request.get_ref().by_external_id))]
+    #[autometrics]
+    async fn get_many(&self, request: Request<GetUsersRequest>) -> Result<Response<GetUsersResponse>, Status> {
+        let req = request.into_inner();
+        let mask = req.fields.filter(|m| !m.paths.is_empty());
+        let ids = req.ids.into_iter()
+            .map(|id| if req.by_external_id { UserId::External(id) } else { UserId::Internal(id) })
+            .collect();
+
+        let users = self.repos.users.get_many(ids).await
+            .into_status()?
+            .into_iter()
+            .map(|(key, user)| {
+                let mut user: User = user.into();
+                if let Some(mask) = &mask {
+                    project_user(&mut user, &mask.paths);
+                }
+                (key.value(), user)
+            })
+            .collect();
+        Ok(Response::new(GetUsersResponse { users }))
     }
 
     #[tracing::instrument(skip(self, request), fields(

@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT usm.external_id, u.id, u.name, u.language_code, u.location, u.premium_till\n                FROM Users u\n                JOIN User_Service_Mappings usm ON u.id = usm.user_id\n                WHERE usm.external_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "external_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "language_code",
+        "type_info": "Bpchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "location",
+        "type_info": "Float8Array"
+      },
+      {
+        "ordinal": 5,
+        "name": "premium_till",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d377165dbdb0a0806755db9cf2d75ddb7fb6d4195e01cb23c47dab63eaf9efb5"
+}

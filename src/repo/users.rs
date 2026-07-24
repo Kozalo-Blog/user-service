@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use derive_more::{Constructor, From};
 use num_traits::Zero;
@@ -38,10 +39,19 @@ impl TryFrom<UserInternal> for SavedUser {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UserId {
     Internal(i64),
     External(i64),
+}
+
+impl UserId {
+    /// The underlying numeric id, regardless of kind.
+    pub fn value(self) -> i64 {
+        match self {
+            UserId::Internal(id) | UserId::External(id) => id,
+        }
+    }
 }
 
 impl std::fmt::Display for UserId {
@@ -68,6 +78,9 @@ impl From<Location> for UpdateTarget {
 
 pub trait Users: Send + Sync {
     fn get(&self, id: UserId) -> impl Future<Output = Result<Option<SavedUser>, RepoError<TypeConversionError>>> + Send;
+    /// Batch fetch. Keyed by the [`UserId`] the caller passed so results can be correlated.
+    /// Missing ids are simply absent from the map.
+    fn get_many(&self, ids: Vec<UserId>) -> impl Future<Output = Result<HashMap<UserId, SavedUser>, RepoError<TypeConversionError>>> + Send;
     fn register(&self, user: ExternalUser, service_id: i32, consent_info: serde_json::Value) -> impl Future<Output = Result<i64, RepoError<TypeConversionError>>> + Send;
     fn get_user_id(&self, service_id: i32, external_id: i64) -> impl Future<Output = Result<Option<i64>, RepoError<TypeConversionError>>> + Send;
     fn update_value(&self, user_id: i64, target: UpdateTarget) -> impl Future<Output = Result<(), RepoError<TypeConversionError>>> + Send;
@@ -111,6 +124,61 @@ impl Users for UsersPostgres {
                 Err(e.into())
             }
         }
+    }
+
+    #[tracing::instrument(skip(self), fields(ids_count = ids.len()))]
+    async fn get_many(&self, ids: Vec<UserId>) -> Result<HashMap<UserId, SavedUser>, RepoError<TypeConversionError>> {
+        let (internal, external): (Vec<UserId>, Vec<UserId>) = ids.into_iter()
+            .partition(|id| matches!(id, UserId::Internal(_)));
+        let internal_ids: Vec<i64> = internal.into_iter().map(UserId::value).collect();
+        let external_ids: Vec<i64> = external.into_iter().map(UserId::value).collect();
+
+        let internal = if internal_ids.is_empty() {
+            Vec::new()
+        } else {
+            tracing::debug!(count = internal_ids.len(), "Fetching users by internal IDs");
+            sqlx::query_as!(UserInternal,
+                "SELECT id, name, language_code, location, premium_till FROM Users WHERE id = ANY($1)",
+                &internal_ids)
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|user| SavedUser::try_from(user).map(|u| (UserId::Internal(u.id), u)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(RepoError::Other)?
+        };
+
+        let external = if external_ids.is_empty() {
+            Vec::new()
+        } else {
+            tracing::debug!(count = external_ids.len(), "Fetching users by external IDs");
+            // Select external_id alongside so we can key results by the requested (external) id.
+            sqlx::query!(
+                "SELECT DISTINCT usm.external_id, u.id, u.name, u.language_code, u.location, u.premium_till
+                FROM Users u
+                JOIN User_Service_Mappings usm ON u.id = usm.user_id
+                WHERE usm.external_id = ANY($1)", &external_ids)
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|r| {
+                let key = UserId::External(r.external_id);
+                let user = UserInternal {
+                    id: r.id,
+                    name: r.name,
+                    language_code: r.language_code,
+                    location: r.location,
+                    premium_till: r.premium_till,
+                };
+                SavedUser::try_from(user).map(|u| (key, u))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(RepoError::Other)?
+        };
+
+        let result: HashMap<UserId, SavedUser> = internal.into_iter().chain(external).collect();
+        tracing::debug!(found = result.len(), "Users fetched from database");
+        Ok(result)
     }
 
     #[tracing::instrument(skip(self, user, consent_info), fields(external_id = %user.external_id, service_id = %service_id))]

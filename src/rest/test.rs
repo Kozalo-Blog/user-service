@@ -113,6 +113,17 @@ impl UserServiceClient {
         ).await?;
         Ok(response)
     }
+
+    async fn search_users(&self, query: &str) -> anyhow::Result<Response> {
+        let app = self.router.clone();
+        let response = app.oneshot(
+            Request::builder()
+                .method(http::Method::GET)
+                .uri(format!("/search?{query}"))
+                .body(Body::empty())?
+        ).await?;
+        Ok(response)
+    }
 }
 
 #[tokio::test]
@@ -162,10 +173,7 @@ async fn test_get_and_create() -> anyhow::Result<()> {
     assert_eq!(body, json!({
         "id": 1,
         "name": external_user.name.unwrap(),
-        "options": {
-            "language_code": null,
-            "location": null
-        },
+        "options": {},
         "is_premium": false
     }));
 
@@ -218,6 +226,67 @@ async fn test_updates() -> anyhow::Result<()> {
         },
         "is_premium": true
     }));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_search() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+
+    // two users with distinct languages, keyed by external id (internal ids 1 and 2)
+    let users = UsersMock::with_data(HashMap::from([
+        (111 as ExternalId, SavedUser {
+            id: 1, name: Some("Alice".to_owned()),
+            language_code: Some("ru".try_into()?), location: None, premium_till: None,
+        }),
+        (222 as ExternalId, SavedUser {
+            id: 2, name: Some("Bob".to_owned()),
+            language_code: Some("en".try_into()?), location: None, premium_till: None,
+        }),
+    ]));
+    let client = UserServiceClient::new(repo::Repositories::new(users, ServicesMock::default()));
+
+    // by internal id; results grouped under "users_by_id", a missing id simply omitted.
+    // The "users_by_external_id" group is absent because none were requested.
+    let response = client.search_users("id=1,2,999").await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_json_value(response).await?;
+    assert_eq!(body, json!({
+        "users_by_id": {
+            "1": {"id": 1, "name": "Alice", "options": {"language_code": "ru"}, "is_premium": false},
+            "2": {"id": 2, "name": "Bob", "options": {"language_code": "en"}, "is_premium": false}
+        }
+    }));
+
+    // projection: only options.language_code selected; the mask is honoured literally (no forced id),
+    // correlation is via the map key
+    let response = client.search_users("id=1,2&fields=options.language_code").await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_json_value(response).await?;
+    assert_eq!(body, json!({
+        "users_by_id": {
+            "1": {"options": {"language_code": "ru"}},
+            "2": {"options": {"language_code": "en"}}
+        }
+    }));
+
+    // mixed internal + external in one call; inner id stays internal
+    let response = client.search_users("id=1&external_id=222").await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_json_value(response).await?;
+    assert_eq!(body, json!({
+        "users_by_id": {
+            "1": {"id": 1, "name": "Alice", "options": {"language_code": "ru"}, "is_premium": false}
+        },
+        "users_by_external_id": {
+            "222": {"id": 2, "name": "Bob", "options": {"language_code": "en"}, "is_premium": false}
+        }
+    }));
+
+    // invalid ids → 400
+    let response = client.search_users("id=1,abc").await?;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     Ok(())
 }

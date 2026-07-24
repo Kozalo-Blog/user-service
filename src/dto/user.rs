@@ -103,9 +103,9 @@ impl TryFrom<&str> for Code {
     }
 }
 
-impl Into<String> for Code {
-    fn into(self) -> String {
-        format!("{}{}", self.0[0], self.0[1])
+impl From<Code> for String {
+    fn from(value: Code) -> Self {
+        format!("{}{}", value.0[0], value.0[1])
     }
 }
 
@@ -118,9 +118,9 @@ pub enum PremiumVariant {
     Year = 12,
 }
 
-impl Into<DateTime<Utc>> for PremiumVariant {
-    fn into(self) -> DateTime<Utc> {
-        self + Utc::now()
+impl From<PremiumVariant> for DateTime<Utc> {
+    fn from(value: PremiumVariant) -> Self {
+        value + Utc::now()
     }
 }
 
