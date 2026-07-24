@@ -37,13 +37,13 @@ pub enum PremiumVariantRest {
     Year,
 }
 
-impl Into<PremiumVariant> for PremiumVariantRest {
-    fn into(self) -> PremiumVariant {
-        match self {
-            Self::Month => PremiumVariant::Month,
-            Self::Quarter => PremiumVariant::Quarter,
-            Self::HalfYear => PremiumVariant::HalfYear,
-            Self::Year => PremiumVariant::Year,
+impl From<PremiumVariantRest> for PremiumVariant {
+    fn from(value: PremiumVariantRest) -> Self {
+        match value {
+            PremiumVariantRest::Month => PremiumVariant::Month,
+            PremiumVariantRest::Quarter => PremiumVariant::Quarter,
+            PremiumVariantRest::HalfYear => PremiumVariant::HalfYear,
+            PremiumVariantRest::Year => PremiumVariant::Year,
         }
     }
 }

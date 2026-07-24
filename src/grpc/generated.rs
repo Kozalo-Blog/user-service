@@ -46,11 +46,11 @@ pub fn project_user(user: &mut User, paths: &[String]) {
     }
 }
 
-impl Into<dto::ExternalUser> for ExternalUser {
-    fn into(self) -> dto::ExternalUser {
+impl From<ExternalUser> for dto::ExternalUser {
+    fn from(value: ExternalUser) -> Self {
         dto::ExternalUser {
-            external_id: self.external_id,
-            name: self.name,
+            external_id: value.external_id,
+            name: value.name,
         }
     }
 }
